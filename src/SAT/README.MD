@@ -1,1 +1,0 @@
-This will have the complete implementation of the implementation alone of the SAT Solver. It will follow the Feature Oriented Programming Principle and will have places for extension.
