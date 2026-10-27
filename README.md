@@ -123,22 +123,61 @@ Sodium is engineered from the bare metal up in **C11**, decoupling front-end sem
 - **Double Rescaling Guard**: Prevents floating-point overflow ($> 10^{100}$) by safely downscaling all scores.
 - **Direct Memory Integration**: Backed entirely by Sodium's generational `MemoryManager`.
 
+#### Standalone VSIDS Usage
+
+```c
+#include "VSIDS.h"
+#include <stdio.h>
+
+int main(void) {
+    VSIDS vsids;
+    // Initialize VSIDS for 10 variables with default 0.95 decay
+    vsids_initialize(&vsids, 10);
+
+    // Bump variables involved in conflicts
+    vsids_bump(&vsids, 3);
+    vsids_bump(&vsids, 5);
+    vsids_bump(&vsids, 5);
+
+    // Decay scores after conflict resolution
+    vsids_decay(&vsids);
+
+    // Select the highest-activity unassigned variable
+    int assignment[11] = {0}; // All UNASSIGNED
+    size_t next_branch = vsids_select_variable(&vsids, assignment);
+    printf("Next branch decision: Variable %zu (Activity: %.2f)\n", 
+           next_branch, vsids_get_activity(&vsids, next_branch));
+
+    vsids_cleanup(&vsids);
+    return 0;
+}
+```
+
+```bash
+# Compile and run standalone VSIDS
+clang -Wall -Wextra -O3 -I src/SAT/CDCL vsids_example.c \
+    src/SAT/CDCL/VSIDS.c \
+    src/SAT/CDCL/memory.c \
+    -o vsids_example
+
+./vsids_example
+```
+
 ---
 
 ## 🚀 Quickstart
 
 ### Prerequisites
 - Modern C Compiler (`clang` or `gcc`) with C11 support
-- `make`
 
-### Building Sodium
+### Building the CDCL Solver Engine
 
 ```bash
 # Clone the repository
 git clone https://github.com/Aditya-B-007/Sodium.git
 cd Sodium
 
-# Compile the core CDCL solver engine
+# Compile the core CDCL solver object modules
 clang -Wall -Wextra -Wpedantic -O3 -I src/SAT/CDCL -c \
     src/SAT/CDCL/memory.c \
     src/SAT/CDCL/VSIDS.c \
@@ -147,8 +186,10 @@ clang -Wall -Wextra -Wpedantic -O3 -I src/SAT/CDCL -c \
 
 ### Programmatic Integration Example
 
+Save the following code as `example.c`:
+
 ```c
-#include "src/SAT/CDCL/CDCL.h"
+#include "CDCL.h"
 #include <stdio.h>
 
 int main(void) {
@@ -177,6 +218,17 @@ int main(void) {
     destroy_solver(&solver);
     return 0;
 }
+```
+
+```bash
+# Compile and run the complete CDCL solver application
+clang -Wall -Wextra -O3 -I src/SAT/CDCL example.c \
+    src/SAT/CDCL/CDCL.c \
+    src/SAT/CDCL/VSIDS.c \
+    src/SAT/CDCL/memory.c \
+    -o sodium
+
+./sodium
 ```
 
 ---
