@@ -110,7 +110,7 @@ Sodium is engineered from the bare metal up in **C11**, decoupling front-end sem
 
 ### 1. Custom Generational Handle-Based Memory Manager (`memory.c`)
 - **ABA-Immune Generational Indexing**: Every allocation is tracked via a 64-bit generation handle (`RecordHandle { index, generation }`). Stale handles cannot resurrect or corrupt memory.
-- **In-Place Two-Pointer Sliding Compaction**: Automatically compacts tombstoned records when fragmented threshold is crossed ($> 30\%$).
+- **In-Place Two-Pointer Sliding Compaction**: Automatically compacts tombstoned records when fragmented threshold is crossed (> 30%).
 - **Deterministic Latency**: Bypasses general-purpose system allocators during hot solving phases.
 
 ### 2. High-Performance CDCL Reasoning Engine (`CDCL.c`)
@@ -119,8 +119,8 @@ Sodium is engineered from the bare metal up in **C11**, decoupling front-end sem
 - **Non-Chronological Backjumping**: Skips irrelevant decision levels directly to the assertion level determined by the learned clause.
 
 ### 3. VSIDS Branching Engine (`VSIDS.c`)
-- **Exponential Activity Decay**: Divides score increments by $\text{decay\_factor} = 0.95$ on every conflict ($O(1)$ amortized decay).
-- **Double Rescaling Guard**: Prevents floating-point overflow ($> 10^{100}$) by safely downscaling all scores.
+- **Exponential Activity Decay**: Divides score increments by `decay_factor = 0.95` on every conflict (`O(1)` amortized decay).
+- **Double Rescaling Guard**: Prevents floating-point overflow (`> 1e100`) by safely downscaling all scores.
 - **Direct Memory Integration**: Backed entirely by Sodium's generational `MemoryManager`.
 
 #### Standalone VSIDS Usage
@@ -248,9 +248,9 @@ clang -Wall -Wextra -O3 -I src/SAT/CDCL example.c \
 - [x] **Q4 2026**: Generational handle-based memory management with automated compaction.
 - [ ] **Q1 2027**: Natural Language Specification Compiler (LLM-guided translation with deterministic AST verification).
 - [ ] **Q2 2027**: Native SMT Theories:
-  - Linear Real and Integer Arithmetic ($\mathcal{LRA} / \mathcal{LIA}$).
-  - Theory of Bit-Vectors ($\mathcal{BV}$) for hardware and software systems.
-  - Theory of Arrays & Uninterpreted Functions ($\mathcal{AX} / \mathcal{UF}$).
+  - Linear Real and Integer Arithmetic (LRA / LIA).
+  - Theory of Bit-Vectors (BV) for hardware and software systems.
+  - Theory of Arrays & Uninterpreted Functions (Arrays / UF).
 - [ ] **Q3 2027**: Enterprise Distributed Reasoning Cloud API & Verification Co-Pilot.
 
 ---
