@@ -231,7 +231,9 @@ Clause* PROPAGATE(CDCLSolver* solver) {
         // Increment solver.propagation_head.
         int assigned_literal = solver->trail[solver->propagation_head++];
 
-        // false_literal = COMPLEMENT(assigned_literal)
+        // When literal `assigned_literal` is assigned TRUE, its complement
+        // `false_literal = -assigned_literal` becomes FALSE.
+        // Clauses that watch `false_literal` are in danger and must be inspected.
         int false_literal = -assigned_literal;
 
         // watch_list = solver.watch_lists[INDEX(false_literal)]
