@@ -8,82 +8,144 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define UNASSIGNED          0
-#define VAL_TRUE            1
-#define VAL_FALSE          -1
+/* Literal and Assignment Values */
+typedef enum {
+    UNASSIGNED,
+    TRUE,
+    FALSE
+} AssignmentValue;
 
-#define NO_REASON            NULL
+typedef enum {
+    NORMAL_SEARCH,
+    CONFLICT_ANALYSIS,
+    UNSAT,
+    SAT,
+    READY
+} SolverMode;
 
-/* Helper macro for variable and literal representation */
+#define NO_REASON           NULL
+#define NO_CONFLICT         NULL
+#define UNDEFINED           UNASSIGNED
+#define VAL_TRUE            TRUE
+#define VAL_FALSE           FALSE
+
+#define SUCCESS             0
+#define FAILURE            -1
+#define ERROR              -1
+#define CONTINUE            1
+
+/* Helper macros for signed literal representation */
 #define VARIABLE_OF(lit)        (abs(lit))
-#define NEGATE(lit)             (-(lit))
+#define COMPLEMENT(lit)         (-(lit))
 #define LIT_TO_INDEX(lit, n)    ((lit) > 0 ? (size_t)(lit) : (size_t)((n) + abs(lit)))
 
 typedef struct Clause {
-    int*    lits;
-    size_t  size;
-    bool    is_learned;
+    int*    literals;           // Array of signed integers
+    int     size;               // Number of literals
+    bool    is_learned;         // Whether the clause was learned (or theory lemma)
+    double  activity;           // Usefulness score for database reduction
+    bool    is_deleted;         // Whether the clause has been removed
 } Clause;
 
-typedef struct ClauseVector {
-    Clause** data;
-    size_t   size;
-    size_t   capacity;
-} ClauseVector;
-
-typedef struct LitVector {
-    int*    data;
-    size_t  size;
-    size_t  capacity;
-} LitVector;
-
-typedef struct SizeVector {
-    size_t* data;
-    size_t  size;
-    size_t  capacity;
-} SizeVector;
-
 typedef struct CDCLSolver {
-    size_t          number_of_variables;
+    int                 number_of_variables;
 
-    /* Central memory manager instance */
-    MemoryManager*  memory_manager;
+    /* Assignment and implication graph (1-indexed) */
+    AssignmentValue*    assignment;         // Current truth assignment
+    AssignmentValue*    saved_polarity;     // Phase saving memory
+    int*                decision_level;     // Decision level per variable
+    Clause**            reason;             // Antecedent / explanation clause (NULL for decisions & theory propagations)
 
-    /* Trail Manager State */
-    int*            assignment;         /* 1-indexed: UNASSIGNED, VAL_TRUE, VAL_FALSE */
-    size_t*         decision_level;     /* 1-indexed: level per variable */
-    Clause**        reason;             /* 1-indexed: antecedent clause per variable */
-    LitVector       trail;              /* Stack of assigned literals */
-    SizeVector      trail_limits;       /* Start index of each decision level */
-    size_t          current_level;
-    size_t          propagation_head;
+    /* Chronological assignment trail */
+    int*                trail;              // Stack of assigned literals
+    int                 trail_size;
+    int                 trail_capacity;
+    int*                trail_limits;       // Start index of each decision level
+    int                 trail_limits_size;
+    int                 trail_limits_capacity;
+    int                 current_level;
+    int                 propagation_head;   // Next trail literal to propagate
 
-    /* Watch Lists: 2 * num_vars + 1 buckets */
-    ClauseVector*   watch_lists;
+    /* Two-watched-literal (2WL) data */
+    Clause***           watch_lists;        // Watch lists indexed by literal index
+    int*                watch_list_sizes;
+    int*                watch_list_capacities;
+    Clause**            clauses;            // Active original, learned, and theory clauses
+    int                 clause_count;
+    int                 clause_capacity;
 
-    /* Clause Database */
-    ClauseVector    clauses;
+    /* Conflict analysis scratchpad */
+    bool*               seen;               // Marked variables during 1-UIP traversal
+    int*                bump_variables;     // Variables to bump in VSIDS
+    int                 bump_variables_count;
+    int                 bump_variables_capacity;
+    SolverMode          solver_mode;
 
-    /* Heuristics */
-    VSIDS           vsids;
+    /* Heuristics and Memory */
+    MemoryManager       memory_manager;
+    VSIDS               vsids;
 
-    /* Scratchpad for conflict analysis */
-    bool*           seen;
-    SizeVector      bump_variables;
+    /* Restart and database maintenance */
+    int                 conflict_count;
+    int                 conflicts_since_restart;
+    int                 restart_limit;
+    int                 restart_base;
+    int                 restart_index;
+    int                 learned_clause_count;
+    int                 min_learned_clauses;
+    int                 next_refresh_conflict;
+    int                 refresh_interval;
 } CDCLSolver;
 
-/* Core Public Solver API */
-void initialize_trail(CDCLSolver* solver, size_t number_of_variables);
-Clause* create_clause(const int* lits, size_t size, bool is_learned);
-bool solve(CDCLSolver* solver, size_t num_vars, Clause** original_clauses, size_t num_clauses);
-void destroy_solver(CDCLSolver* solver);
 
-/* Internal / Modular Methods */
-void new_decision_level(CDCLSolver* solver);
-bool enqueue(CDCLSolver* solver, int literal, Clause* reason_clause);
-void backtrack(CDCLSolver* solver, size_t target_level);
-Clause* propagate(CDCLSolver* solver);
-void analyze(CDCLSolver* solver, Clause* conflict_clause, LitVector* learned_clause, size_t* backtrack_level);
-int select_polarity(size_t variable);
+/**
+ * @brief Initializes the CDCL solver state, reasoning subsystems, and input clauses.
+ */
+SolverMode INITIALIZE_SOLVER(CDCLSolver* solver, int variables, Clause** input_clauses, int input_clause_count);
+
+/**
+ * @brief Runs the CDCL search loop to completion (SAT, UNSAT, or ERROR).
+ */
+SolverMode SOLVE(CDCLSolver* solver, int number_of_variables, Clause** input_clauses, int input_clause_count);
+
+/**
+ * @brief Cleans up and frees all memory allocated across the solver and its subsystems.
+ */
+void DESTROY_SOLVER(CDCLSolver* solver);
+
+
+/**
+ * @brief Enqueues an assignment on the trail at the current decision level.
+ *        Used by theory solvers for theory-propagated literals (with reason).
+ */
+bool ENQUEUE(CDCLSolver* solver, int literal, Clause* reason_clause);
+
+/**
+ * @brief Propagates Boolean assignments via Two-Watched Literals.
+ *        Returns the conflicting clause if a conflict is derived, otherwise NO_CONFLICT.
+ */
+Clause* PROPAGATE(CDCLSolver* solver);
+
+/**
+ * @brief Adds and watches an external or learned clause (e.g. SMT Theory Lemma / Conflict Clause).
+ */
+void ATTACH_CLAUSE(CDCLSolver* solver, Clause* clause);
+
+/**
+ * @brief Backtracks to a specific decision level, unassigning trail variables and saving polarity.
+ *        Used by SMT when theory conflict occurs or during push/pop scoping.
+ */
+int BACKTRACK(CDCLSolver* solver, int target_level);
+
+/**
+ * @brief Derives 1-UIP learned clause and assertion backtrack level from a conflict.
+ *        Also handles explanation generation for theory conflicts.
+ */
+int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_learned_clause);
+
+/**
+ * @brief Resolves a conflict, learns clause, updates heuristics, and backjumps.
+ */
+int HANDLE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause);
 
 #endif // CDCL_H
