@@ -549,6 +549,17 @@ Status compact_and_remove_deleted(MemoryManager* manager) {
     return STATUS_SUCCESS;
 }
 
+void cleanup_memory_manager(MemoryManager *manager) {
+    if (!manager) return;
+
+    free(manager->buffer);
+    free(manager->handle_table);
+    free(manager->free_handles.items);
+
+    manager->buffer = NULL;
+    manager->handle_table = NULL;
+    manager->free_handles.items = NULL;
+}
 void destroy_memory_manager(MemoryManager* manager) {
     if (!manager) return;
 

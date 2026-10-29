@@ -78,6 +78,7 @@ static inline void CLEANUP_SOLVER(CDCLSolver* solver) {
 }
 
 static inline void INITIALIZE_BASIC_SOLVER_STATE(CDCLSolver* solver, int variables) {
+    memset(solver,0,sizeof(*solver)); //Ensures the memory is properly allocated and ensures that none of them are NULL
     solver->number_of_variables = variables;
     solver->assignment = (AssignmentValue*)malloc((variables + 1) * sizeof(AssignmentValue));
     solver->decision_level = (int*)malloc((variables + 1) * sizeof(int));
@@ -224,8 +225,6 @@ static inline AssignmentValue LIT_VALUE(const CDCLSolver* solver, int lit) {
 
 Clause* PROPAGATE(CDCLSolver* solver) {
     size_t n = solver->number_of_variables;
-
-    // WHILE solver.propagation_head < LENGTH(solver.trail):
     while (solver->propagation_head < solver->trail_size) {
         // assigned_literal = solver.trail[solver.propagation_head]
         // Increment solver.propagation_head.
@@ -932,16 +931,12 @@ int REFRESH_CLAUSE_DATABASE(CDCLSolver* solver) {
 }
 
 int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables) {
-    // INITIALIZE_MEMORY_MANAGER(solver.memory_manager)
     MemoryManager* mm_ptr = NULL;
     if (initialize_memory_manager(variables + 64, &mm_ptr) != STATUS_SUCCESS || !mm_ptr) {
         return FAILURE;
     }
     solver->memory_manager = *mm_ptr;
     free(mm_ptr);
-
-    // IF VSIDS_INITIALIZE_WITH_MANAGER(solver.vsids, solver.memory_manager, variables) == FAILURE:
-    //     RETURN FAILURE
     if (!vsids_initialize_with_manager(&solver->vsids, &solver->memory_manager, variables, DEFAULT_DECAY_FACTOR)) {
         return FAILURE;
     }
@@ -949,18 +944,30 @@ int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables) {
     // INITIALIZE_TRAIL(solver)
     solver->trail_capacity = variables > 0 ? variables : 16;
     solver->trail = (int*)malloc(solver->trail_capacity * sizeof(int));
+    if(solver->trail==NULL){
+        return FAILURE;
+    }
     solver->trail_size = 0;
 
     // INITIALIZE_TRAIL_LIMITS(solver)
     solver->trail_limits_capacity = 32;
     solver->trail_limits = (int*)malloc(solver->trail_limits_capacity * sizeof(int));
+    if(solver->trail_limits){
+        return FAILURE;
+    }
     solver->trail_limits_size = 0;
 
     // INITIALIZE_WATCH_LISTS(solver, variables)
     int watch_list_total = 2 * variables + 1;
     solver->watch_lists = (Clause***)malloc(watch_list_total * sizeof(Clause**));
+    if(solver->watch_lists){
+        return FAILURE;
+    }
     solver->watch_list_sizes = (int*)calloc(watch_list_total, sizeof(int));
     solver->watch_list_capacities = (int*)malloc(watch_list_total * sizeof(int));
+    if(solver->watch_list_capacities){
+        return FAILURE;
+    }
     for (int i = 0; i < watch_list_total; i++) {
         solver->watch_list_capacities[i] = 4;
         solver->watch_lists[i] = (Clause**)malloc(solver->watch_list_capacities[i] * sizeof(Clause*));
@@ -1099,7 +1106,8 @@ void DESTROY_SOLVER(CDCLSolver* solver) {
 
     // Destroy the MemoryManager only after every dependent
     // subsystem has finished using it.
-    destroy_memory_manager(&solver->memory_manager);
+    //destroy_memory_manager(&solver->memory_manager);
+    cleanup_memory_manager(MemoryManager *manager);
 
     // Clear all pointers and reset the solver state.
     solver->number_of_variables = 0;

@@ -78,6 +78,7 @@ Status update_record(MemoryManager* manager, RecordHandle handle, void* const* n
 Status delete_record(MemoryManager* manager, RecordHandle handle);
 bool   compaction_needed(const MemoryManager* manager);
 Status compact_and_remove_deleted(MemoryManager* manager);
-void   destroy_memory_manager(MemoryManager* manager);
+void cleanup_memory_manager(MemoryManager *manager);s
+void destroy_memory_manager(MemoryManager* manager);
 
 #endif // MEMORY_H
