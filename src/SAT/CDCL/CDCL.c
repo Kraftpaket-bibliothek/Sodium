@@ -4,6 +4,9 @@
 #include "VSIDS.h"
 #include "memory.h"
 
+#ifdef UNASSIGNED
+#undef UNASSIGNED
+#endif
 typedef enum {
     UNASSIGNED,
     TRUE,
@@ -67,11 +70,20 @@ typedef struct {
     int refresh_interval;
 } CDCLSolver;
 
+#ifndef SUCCESS
+#define SUCCESS  0
+#endif
+#ifndef FAILURE
+#define FAILURE -1
+#endif
+
 // Forward declarations for helper procedures
 bool ENQUEUE(CDCLSolver* solver, int literal, Clause* reason_clause);
 void ATTACH_CLAUSE(CDCLSolver* solver, Clause* clause);
 void DESTROY_SOLVER(CDCLSolver* solver);
 int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables);
+void UPDATE_BRANCHING_HEURISTIC(CDCLSolver* solver);
+int REFRESH_CLAUSE_DATABASE(CDCLSolver* solver);
 
 static inline void CLEANUP_SOLVER(CDCLSolver* solver) {
     DESTROY_SOLVER(solver);
@@ -952,7 +964,7 @@ int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables) {
     // INITIALIZE_TRAIL_LIMITS(solver)
     solver->trail_limits_capacity = 32;
     solver->trail_limits = (int*)malloc(solver->trail_limits_capacity * sizeof(int));
-    if(solver->trail_limits){
+    if (solver->trail_limits == NULL) {
         return FAILURE;
     }
     solver->trail_limits_size = 0;
@@ -960,12 +972,12 @@ int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables) {
     // INITIALIZE_WATCH_LISTS(solver, variables)
     int watch_list_total = 2 * variables + 1;
     solver->watch_lists = (Clause***)malloc(watch_list_total * sizeof(Clause**));
-    if(solver->watch_lists){
+    if (solver->watch_lists == NULL) {
         return FAILURE;
     }
     solver->watch_list_sizes = (int*)calloc(watch_list_total, sizeof(int));
     solver->watch_list_capacities = (int*)malloc(watch_list_total * sizeof(int));
-    if(solver->watch_list_capacities){
+    if (solver->watch_list_capacities == NULL) {
         return FAILURE;
     }
     for (int i = 0; i < watch_list_total; i++) {
@@ -1106,8 +1118,7 @@ void DESTROY_SOLVER(CDCLSolver* solver) {
 
     // Destroy the MemoryManager only after every dependent
     // subsystem has finished using it.
-    //destroy_memory_manager(&solver->memory_manager);
-    cleanup_memory_manager(MemoryManager *manager);
+    cleanup_memory_manager(&solver->memory_manager);
 
     // Clear all pointers and reset the solver state.
     solver->number_of_variables = 0;

@@ -263,7 +263,7 @@ Sodium is licensed under the **[Apache License 2.0](LICENSE)**.
 ---
 
 <div align="center">
-<b>Sodium is built for the era of provable, verifiable intelligence.</b>
+<b>Sodium is being built because I was fed up of AI Hallucinating everyday decisions based on requirements in production.</b>
 <br/>
 <sub>Designed & engineered by Aditya.</sub>
 </div>

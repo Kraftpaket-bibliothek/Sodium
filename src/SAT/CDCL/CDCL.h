@@ -9,6 +9,9 @@
 #include <stddef.h>
 
 /* Literal and Assignment Values */
+#ifdef UNASSIGNED
+#undef UNASSIGNED
+#endif
 typedef enum {
     UNASSIGNED,
     TRUE,
