@@ -1,6 +1,7 @@
 <div align="center">
 
 # Sodium
+<img width="1536" height="1024" alt="Modern Na Emblem with Indian Flag Accent" src="https://github.com/user-attachments/assets/fe782949-42c1-41b2-9953-8bccacfefab6" />
 
 ### Industrial-Grade Automated Reasoning & Neuro-Symbolic Verification Engine
 
