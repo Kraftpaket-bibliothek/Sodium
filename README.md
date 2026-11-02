@@ -259,7 +259,6 @@ clang -Wall -Wextra -O3 -I src/SAT/CDCL example.c \
 
 Sodium is licensed under the **[Apache License 2.0](LICENSE)**.
 
-(For now, until I can monetise it !!)
 ---
 
 <div align="center">
