@@ -8,12 +8,11 @@
  *        - SAT:             Conjunctive Normal Form & CDCL solving (src/SAT/sat_api.h)
  *        - NLP:             Semantic rule translation & prompt engineering (src/NLP/nlp_api.h)
  *        - InterfaceAndUI:  Dear ImGui frontend & guided rule builder (src/InterfaceAndUI/userInterface.h)
- *        - SMT:             Satisfiability Modulo Theories DPLL(T) engine (src/SMT/smt_core.h)
+ *        - SMT:             Satisfiability Modulo Theories (src/SMT/)
  */
 
 #include "SAT/sat_api.h"
 #include "NLP/nlp_api.h"
-#include "SMT/smt_core.h"
 #include "InterfaceAndUI/userInterface.h"
 
 #endif // SODIUM_API_H
