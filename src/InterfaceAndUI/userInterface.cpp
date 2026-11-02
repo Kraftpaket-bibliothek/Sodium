@@ -1,6 +1,6 @@
 // ============================================================================
 // Sodium - Automated Reasoning & System Verification Studio
-// File: src/userInterface.cpp
+// File: src/InterfaceAndUI/userInterface.cpp
 // Description: Modern Dear ImGui frontend with zero implementation jargon.
 // Theme: High-contrast Royal Purple & Pure White.
 // Features: Guided Rule Builder (fill-in-the-blanks, predefined templates,

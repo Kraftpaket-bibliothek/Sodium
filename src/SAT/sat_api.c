@@ -1,13 +1,13 @@
 // ============================================================================
 // Sodium - Automated Reasoning & Neuro-Symbolic Verification Engine
-// File: src/API.c
-// Description: Core Sodium Public API Implementation.
+// Feature: SAT Module
+// File: src/SAT/sat_api.c
+// Description: Core SAT Solver Implementation & Mode 1 JSON Pipeline.
 //              - Mode 1: SAT Logic JSON Pipeline with CaDiCaL references.
-//              - Mode 2: NLP Reasoning Bridge (SystemPrompt & userPrompt schema).
 //              - CaDiCaL-compatible in-memory incremental C solver API.
 // ============================================================================
 
-#include "API.h"
+#include "sat_api.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,7 +15,9 @@
 #include <ctype.h>
 #include <math.h>
 
-#if __has_include("CDCL.h")
+#if __has_include("CDCL/CDCL.h")
+#include "CDCL/CDCL.h"
+#elif __has_include("CDCL.h")
 #include "CDCL.h"
 #elif __has_include("SAT/CDCL/CDCL.h")
 #include "SAT/CDCL/CDCL.h"
@@ -97,15 +99,6 @@ static void sb_append_json_str(StringBuilder* sb, const char* str) {
     sb_append_char(sb, '"');
 }
 
-static void sb_free(StringBuilder* sb) {
-    if (sb->data) {
-        free(sb->data);
-        sb->data = NULL;
-    }
-    sb->length = 0;
-    sb->capacity = 0;
-}
-
 void sodium_api_free_string(char* str) {
     if (str) {
         free(str);
@@ -113,7 +106,7 @@ void sodium_api_free_string(char* str) {
 }
 
 // ============================================================================
-// SECTION 2: LIGHTWEIGHT PURE-C JSON PARSER
+// SECTION 2: LIGHTWEIGHT PURE-C JSON AST FOR INCOMING CNF REQUESTS
 // ============================================================================
 
 typedef enum {
@@ -123,17 +116,17 @@ typedef enum {
     JSON_VAL_STRING,
     JSON_VAL_ARRAY,
     JSON_VAL_OBJECT
-} JsonValueType;
+} JsonType;
 
 typedef struct JsonValue JsonValue;
 
 typedef struct {
-    char*      key;
-    JsonValue* value;
+    char*       key;
+    JsonValue*  value;
 } JsonProperty;
 
 struct JsonValue {
-    JsonValueType type;
+    JsonType type;
     union {
         bool   boolean;
         double number;
@@ -151,72 +144,59 @@ struct JsonValue {
     } u;
 };
 
-static JsonValue* json_value_new(JsonValueType type) {
-    JsonValue* v = (JsonValue*)calloc(1, sizeof(JsonValue));
-    v->type = type;
-    return v;
-}
-
-static void json_value_free(JsonValue* v) {
-    if (!v) return;
-    switch (v->type) {
+static void json_value_free(JsonValue* val) {
+    if (!val) return;
+    switch (val->type) {
         case JSON_VAL_STRING:
-            if (v->u.string) free(v->u.string);
+            if (val->u.string) free(val->u.string);
             break;
         case JSON_VAL_ARRAY:
-            for (size_t i = 0; i < v->u.array.count; i++) {
-                json_value_free(v->u.array.items[i]);
+            for (size_t i = 0; i < val->u.array.count; i++) {
+                json_value_free(val->u.array.items[i]);
             }
-            if (v->u.array.items) free(v->u.array.items);
+            if (val->u.array.items) free(val->u.array.items);
             break;
         case JSON_VAL_OBJECT:
-            for (size_t i = 0; i < v->u.object.count; i++) {
-                if (v->u.object.properties[i].key) free(v->u.object.properties[i].key);
-                json_value_free(v->u.object.properties[i].value);
+            for (size_t i = 0; i < val->u.object.count; i++) {
+                if (val->u.object.properties[i].key) free(val->u.object.properties[i].key);
+                json_value_free(val->u.object.properties[i].value);
             }
-            if (v->u.object.properties) free(v->u.object.properties);
+            if (val->u.object.properties) free(val->u.object.properties);
             break;
         default:
             break;
     }
-    free(v);
+    free(val);
 }
 
 typedef struct {
     const char* src;
     size_t      pos;
-} JsonLexer;
+} JsonParser;
 
-static void json_skip_ws(JsonLexer* lex) {
-    while (lex->src[lex->pos] && (isspace((unsigned char)lex->src[lex->pos]) || lex->src[lex->pos] == '\0')) {
-        lex->pos++;
+static void json_skip_whitespace(JsonParser* p) {
+    while (p->src[p->pos] && (unsigned char)p->src[p->pos] <= 0x20) {
+        p->pos++;
     }
 }
 
-static char json_peek(JsonLexer* lex) {
-    json_skip_ws(lex);
-    return lex->src[lex->pos];
-}
+static JsonValue* json_parse_value(JsonParser* p);
 
-static char json_next(JsonLexer* lex) {
-    json_skip_ws(lex);
-    return lex->src[lex->pos++];
-}
+static char* json_parse_raw_string(JsonParser* p) {
+    if (p->src[p->pos] != '"') return NULL;
+    p->pos++; // skip leading "
 
-static char* json_parse_string(JsonLexer* lex) {
-    if (json_next(lex) != '"') return NULL;
     StringBuilder sb;
     sb_init(&sb, 32);
 
-    while (lex->src[lex->pos]) {
-        char c = lex->src[lex->pos++];
+    while (p->src[p->pos]) {
+        char c = p->src[p->pos++];
         if (c == '"') {
-            char* out = sb.data;
-            return out;
+            return sb.data;
         }
         if (c == '\\') {
-            if (!lex->src[lex->pos]) break;
-            char esc = lex->src[lex->pos++];
+            if (!p->src[p->pos]) break;
+            char esc = p->src[p->pos++];
             switch (esc) {
                 case '"':  sb_append_char(&sb, '"');  break;
                 case '\\': sb_append_char(&sb, '\\'); break;
@@ -227,9 +207,16 @@ static char* json_parse_string(JsonLexer* lex) {
                 case 'r':  sb_append_char(&sb, '\r'); break;
                 case 't':  sb_append_char(&sb, '\t'); break;
                 case 'u': {
-                    // Skip 4 hex digits for basic parsing
-                    for (int h = 0; h < 4 && lex->src[lex->pos]; h++) lex->pos++;
-                    sb_append_char(&sb, '?');
+                    char hex[5] = {0};
+                    for (int h = 0; h < 4 && p->src[p->pos]; h++) {
+                        hex[h] = p->src[p->pos++];
+                    }
+                    int cp = (int)strtol(hex, NULL, 16);
+                    if (cp > 0 && cp < 128) {
+                        sb_append_char(&sb, (char)cp);
+                    } else {
+                        sb_append_char(&sb, '?');
+                    }
                     break;
                 }
                 default:
@@ -240,160 +227,162 @@ static char* json_parse_string(JsonLexer* lex) {
             sb_append_char(&sb, c);
         }
     }
-    sb_free(&sb);
-    return NULL;
+    return sb.data;
 }
 
-static JsonValue* json_parse_value(JsonLexer* lex);
+static JsonValue* json_parse_number(JsonParser* p) {
+    const char* start = &p->src[p->pos];
+    char* end = NULL;
+    double val = strtod(start, &end);
+    if (end == start) return NULL;
+    p->pos += (size_t)(end - start);
 
-static JsonValue* json_parse_array(JsonLexer* lex) {
-    if (json_next(lex) != '[') return NULL;
-    JsonValue* arr = json_value_new(JSON_VAL_ARRAY);
-    arr->u.array.capacity = 8;
+    JsonValue* v = (JsonValue*)calloc(1, sizeof(JsonValue));
+    v->type = JSON_VAL_NUMBER;
+    v->u.number = val;
+    return v;
+}
+
+static JsonValue* json_parse_array(JsonParser* p) {
+    if (p->src[p->pos] != '[') return NULL;
+    p->pos++; // skip [
+
+    JsonValue* arr = (JsonValue*)calloc(1, sizeof(JsonValue));
+    arr->type = JSON_VAL_ARRAY;
+    arr->u.array.capacity = 16;
     arr->u.array.items = (JsonValue**)malloc(arr->u.array.capacity * sizeof(JsonValue*));
-    arr->u.array.count = 0;
 
-    if (json_peek(lex) == ']') {
-        json_next(lex);
-        return arr;
-    }
-
-    while (true) {
-        JsonValue* item = json_parse_value(lex);
-        if (!item) {
-            json_value_free(arr);
-            return NULL;
+    while (p->src[p->pos]) {
+        json_skip_whitespace(p);
+        if (p->src[p->pos] == ']') {
+            p->pos++;
+            return arr;
         }
+
+        JsonValue* item = json_parse_value(p);
+        if (!item) break;
+
         if (arr->u.array.count >= arr->u.array.capacity) {
             arr->u.array.capacity *= 2;
             arr->u.array.items = (JsonValue**)realloc(arr->u.array.items, arr->u.array.capacity * sizeof(JsonValue*));
         }
         arr->u.array.items[arr->u.array.count++] = item;
 
-        char c = json_peek(lex);
-        if (c == ']') {
-            json_next(lex);
-            break;
-        }
-        if (c == ',') {
-            json_next(lex);
+        json_skip_whitespace(p);
+        if (p->src[p->pos] == ',') {
+            p->pos++;
+        } else if (p->src[p->pos] == ']') {
+            p->pos++;
+            return arr;
         } else {
-            json_value_free(arr);
-            return NULL;
+            break;
         }
     }
     return arr;
 }
 
-static JsonValue* json_parse_object(JsonLexer* lex) {
-    if (json_next(lex) != '{') return NULL;
-    JsonValue* obj = json_value_new(JSON_VAL_OBJECT);
-    obj->u.object.capacity = 8;
+static JsonValue* json_parse_object(JsonParser* p) {
+    if (p->src[p->pos] != '{') return NULL;
+    p->pos++; // skip {
+
+    JsonValue* obj = (JsonValue*)calloc(1, sizeof(JsonValue));
+    obj->type = JSON_VAL_OBJECT;
+    obj->u.object.capacity = 16;
     obj->u.object.properties = (JsonProperty*)malloc(obj->u.object.capacity * sizeof(JsonProperty));
-    obj->u.object.count = 0;
 
-    if (json_peek(lex) == '}') {
-        json_next(lex);
-        return obj;
-    }
+    while (p->src[p->pos]) {
+        json_skip_whitespace(p);
+        if (p->src[p->pos] == '}') {
+            p->pos++;
+            return obj;
+        }
 
-    while (true) {
-        json_skip_ws(lex);
-        if (json_peek(lex) != '"') {
-            json_value_free(obj);
-            return NULL;
-        }
-        char* key = json_parse_string(lex);
-        if (!key) {
-            json_value_free(obj);
-            return NULL;
-        }
-        if (json_next(lex) != ':') {
+        if (p->src[p->pos] != '"') break;
+        char* key = json_parse_raw_string(p);
+        if (!key) break;
+
+        json_skip_whitespace(p);
+        if (p->src[p->pos] != ':') {
             free(key);
-            json_value_free(obj);
-            return NULL;
+            break;
         }
-        JsonValue* val = json_parse_value(lex);
+        p->pos++; // skip :
+
+        JsonValue* val = json_parse_value(p);
         if (!val) {
             free(key);
-            json_value_free(obj);
-            return NULL;
+            break;
         }
 
         if (obj->u.object.count >= obj->u.object.capacity) {
             obj->u.object.capacity *= 2;
-            obj->u.object.properties = (JsonProperty*)realloc(obj->u.object.properties,
-                obj->u.object.capacity * sizeof(JsonProperty));
+            obj->u.object.properties = (JsonProperty*)realloc(obj->u.object.properties, obj->u.object.capacity * sizeof(JsonProperty));
         }
         obj->u.object.properties[obj->u.object.count].key = key;
         obj->u.object.properties[obj->u.object.count].value = val;
         obj->u.object.count++;
 
-        char c = json_peek(lex);
-        if (c == '}') {
-            json_next(lex);
-            break;
-        }
-        if (c == ',') {
-            json_next(lex);
+        json_skip_whitespace(p);
+        if (p->src[p->pos] == ',') {
+            p->pos++;
+        } else if (p->src[p->pos] == '}') {
+            p->pos++;
+            return obj;
         } else {
-            json_value_free(obj);
-            return NULL;
+            break;
         }
     }
     return obj;
 }
 
-static JsonValue* json_parse_value(JsonLexer* lex) {
-    json_skip_ws(lex);
-    char c = json_peek(lex);
-    if (c == '{') return json_parse_object(lex);
-    if (c == '[') return json_parse_array(lex);
+static JsonValue* json_parse_value(JsonParser* p) {
+    json_skip_whitespace(p);
+    char c = p->src[p->pos];
+    if (!c) return NULL;
+
     if (c == '"') {
-        char* s = json_parse_string(lex);
-        if (!s) return NULL;
-        JsonValue* v = json_value_new(JSON_VAL_STRING);
-        v->u.string = s;
+        char* str = json_parse_raw_string(p);
+        if (!str) return NULL;
+        JsonValue* v = (JsonValue*)calloc(1, sizeof(JsonValue));
+        v->type = JSON_VAL_STRING;
+        v->u.string = str;
         return v;
     }
-    if (c == 't' || c == 'f') {
-        bool b = (c == 't');
-        size_t len = b ? 4 : 5;
-        if (strncmp(lex->src + lex->pos, b ? "true" : "false", len) == 0) {
-            lex->pos += len;
-            JsonValue* v = json_value_new(JSON_VAL_BOOL);
-            v->u.boolean = b;
-            return v;
-        }
-        return NULL;
+    if (c == '{') return json_parse_object(p);
+    if (c == '[') return json_parse_array(p);
+    if (c == '-' || (c >= '0' && c <= '9')) return json_parse_number(p);
+
+    if (strncmp(&p->src[p->pos], "true", 4) == 0) {
+        p->pos += 4;
+        JsonValue* v = (JsonValue*)calloc(1, sizeof(JsonValue));
+        v->type = JSON_VAL_BOOL;
+        v->u.boolean = true;
+        return v;
     }
-    if (c == 'n') {
-        if (strncmp(lex->src + lex->pos, "null", 4) == 0) {
-            lex->pos += 4;
-            return json_value_new(JSON_VAL_NULL);
-        }
-        return NULL;
+    if (strncmp(&p->src[p->pos], "false", 5) == 0) {
+        p->pos += 5;
+        JsonValue* v = (JsonValue*)calloc(1, sizeof(JsonValue));
+        v->type = JSON_VAL_BOOL;
+        v->u.boolean = false;
+        return v;
     }
-    if (c == '-' || isdigit((unsigned char)c)) {
-        char* endptr = NULL;
-        double num = strtod(lex->src + lex->pos, &endptr);
-        if (endptr == lex->src + lex->pos) return NULL;
-        lex->pos = (size_t)(endptr - lex->src);
-        JsonValue* v = json_value_new(JSON_VAL_NUMBER);
-        v->u.number = num;
+    if (strncmp(&p->src[p->pos], "null", 4) == 0) {
+        p->pos += 4;
+        JsonValue* v = (JsonValue*)calloc(1, sizeof(JsonValue));
+        v->type = JSON_VAL_NULL;
         return v;
     }
     return NULL;
 }
 
-static JsonValue* json_parse(const char* text) {
-    if (!text) return NULL;
-    JsonLexer lex = { text, 0 };
-    return json_parse_value(&lex);
+static JsonValue* json_parse(const char* json) {
+    if (!json) return NULL;
+    JsonParser p = { json, 0 };
+    return json_parse_value(&p);
 }
 
 static JsonValue* json_object_get(const JsonValue* obj, const char* key) {
-    if (!obj || obj->type != JSON_VAL_OBJECT) return NULL;
+    if (!obj || obj->type != JSON_VAL_OBJECT || !key) return NULL;
     for (size_t i = 0; i < obj->u.object.count; i++) {
         if (strcmp(obj->u.object.properties[i].key, key) == 0) {
             return obj->u.object.properties[i].value;
@@ -403,48 +392,41 @@ static JsonValue* json_object_get(const JsonValue* obj, const char* key) {
 }
 
 // ============================================================================
-// SECTION 3: IN-MEMORY SOLVER IMPLEMENTATION (CaDiCaL Reference Semantics)
+// SECTION 3: IN-MEMORY SODIUM SOLVER CONSTRUCT
 // ============================================================================
 
 struct SodiumSolver {
-    int max_variable;
+    CDCLSolver  cdcl;
+    Clause**    clauses;
+    size_t      clause_count;
+    size_t      clause_capacity;
 
-    // Clause accumulation buffer
-    int*   current_clause;
-    size_t current_clause_size;
-    size_t current_clause_cap;
+    int*        current_clause;
+    size_t      current_clause_len;
+    size_t      current_clause_cap;
 
-    // Base clause database
-    Clause** clauses;
-    size_t   clause_count;
-    size_t   clause_capacity;
+    int*        assumptions;
+    size_t      assumption_count;
+    size_t      assumption_cap;
 
-    // Incremental assumption literals
-    int*   assumptions;
-    size_t assumption_count;
-    size_t assumption_cap;
+    int*        failed_core;
+    size_t      failed_core_count;
+    size_t      failed_core_cap;
 
-    // Failed assumptions core (on UNSAT)
-    int*   failed_core;
-    size_t failed_core_count;
-    size_t failed_core_cap;
+    int*        model;
+    size_t      model_size;
 
-    // Computed truth model (1-indexed: +v, -v, or 0)
-    int*   model;
-    size_t model_size;
-
-    // CDCL Engine instance
-    CDCLSolver cdcl;
-    int last_status;
+    int         max_variable;
+    int         last_status;
 };
 
 SodiumSolver* sodium_solver_create(void) {
     SodiumSolver* s = (SodiumSolver*)calloc(1, sizeof(SodiumSolver));
+    s->clause_capacity = 64;
+    s->clauses = (Clause**)malloc(s->clause_capacity * sizeof(Clause*));
+
     s->current_clause_cap = 16;
     s->current_clause = (int*)malloc(s->current_clause_cap * sizeof(int));
-
-    s->clause_capacity = 32;
-    s->clauses = (Clause**)malloc(s->clause_capacity * sizeof(Clause*));
 
     s->assumption_cap = 16;
     s->assumptions = (int*)malloc(s->assumption_cap * sizeof(int));
@@ -459,19 +441,14 @@ SodiumSolver* sodium_solver_create(void) {
 void sodium_solver_destroy(SodiumSolver* s) {
     if (!s) return;
 
-    if (s->current_clause) free(s->current_clause);
-
-    if (s->clauses) {
-        for (size_t i = 0; i < s->clause_count; i++) {
-            Clause* c = s->clauses[i];
-            if (c) {
-                if (c->literals) free(c->literals);
-                free(c);
-            }
+    for (size_t i = 0; i < s->clause_count; i++) {
+        if (s->clauses[i]) {
+            if (s->clauses[i]->literals) free(s->clauses[i]->literals);
+            free(s->clauses[i]);
         }
-        free(s->clauses);
     }
-
+    if (s->clauses) free(s->clauses);
+    if (s->current_clause) free(s->current_clause);
     if (s->assumptions) free(s->assumptions);
     if (s->failed_core) free(s->failed_core);
     if (s->model) free(s->model);
@@ -482,23 +459,15 @@ void sodium_solver_destroy(SodiumSolver* s) {
 void sodium_solver_add_literal(SodiumSolver* s, int lit) {
     if (!s) return;
 
-    if (lit != 0) {
-        if (abs(lit) > s->max_variable) {
-            s->max_variable = abs(lit);
+    if (lit == 0) {
+        if (s->current_clause_len == 0) {
+            return;
         }
-        if (s->current_clause_size >= s->current_clause_cap) {
-            s->current_clause_cap *= 2;
-            s->current_clause = (int*)realloc(s->current_clause, s->current_clause_cap * sizeof(int));
-        }
-        s->current_clause[s->current_clause_size++] = lit;
-    } else {
-        // 0 finishes the current clause
+
         Clause* c = (Clause*)malloc(sizeof(Clause));
-        c->size = (int)s->current_clause_size;
+        c->size = (int)s->current_clause_len;
         c->literals = (int*)malloc(c->size * sizeof(int));
-        if (c->size > 0) {
-            memcpy(c->literals, s->current_clause, c->size * sizeof(int));
-        }
+        memcpy(c->literals, s->current_clause, c->size * sizeof(int));
         c->is_learned = false;
         c->activity = 0.0;
         c->is_deleted = false;
@@ -508,15 +477,28 @@ void sodium_solver_add_literal(SodiumSolver* s, int lit) {
             s->clauses = (Clause**)realloc(s->clauses, s->clause_capacity * sizeof(Clause*));
         }
         s->clauses[s->clause_count++] = c;
-        s->current_clause_size = 0;
+        s->current_clause_len = 0;
+    } else {
+        int v = abs(lit);
+        if (v > s->max_variable) {
+            s->max_variable = v;
+        }
+
+        if (s->current_clause_len >= s->current_clause_cap) {
+            s->current_clause_cap *= 2;
+            s->current_clause = (int*)realloc(s->current_clause, s->current_clause_cap * sizeof(int));
+        }
+        s->current_clause[s->current_clause_len++] = lit;
     }
 }
 
 void sodium_solver_add_assumption(SodiumSolver* s, int lit) {
     if (!s || lit == 0) return;
-    if (abs(lit) > s->max_variable) {
-        s->max_variable = abs(lit);
+    int v = abs(lit);
+    if (v > s->max_variable) {
+        s->max_variable = v;
     }
+
     if (s->assumption_count >= s->assumption_cap) {
         s->assumption_cap *= 2;
         s->assumptions = (int*)realloc(s->assumptions, s->assumption_cap * sizeof(int));
@@ -530,21 +512,26 @@ void sodium_solver_clear_assumptions(SodiumSolver* s) {
     s->failed_core_count = 0;
 }
 
+int sodium_solver_get_variable_count(const SodiumSolver* s) {
+    return s ? s->max_variable : 0;
+}
+
+int sodium_solver_get_clause_count(const SodiumSolver* s) {
+    return s ? (int)s->clause_count : 0;
+}
+
 int sodium_solver_solve(SodiumSolver* s) {
     if (!s) return SODIUM_STATUS_UNKNOWN;
 
-    // Reset failed core
-    s->failed_core_count = 0;
-
-    // If a clause was left unterminated without a trailing 0, finalize it
-    if (s->current_clause_size > 0) {
+    // Check if there is an unclosed clause
+    if (s->current_clause_len > 0) {
         sodium_solver_add_literal(s, 0);
     }
 
-    // Build effective clause list including temporary assumptions as unit clauses
     size_t total_effective_clauses = s->clause_count + s->assumption_count;
-    Clause** all_clauses = (Clause**)malloc(total_effective_clauses * sizeof(Clause*));
+    Clause** all_clauses = (Clause**)malloc((total_effective_clauses > 0 ? total_effective_clauses : 1) * sizeof(Clause*));
 
+    // Copy permanent clauses
     for (size_t i = 0; i < s->clause_count; i++) {
         all_clauses[i] = s->clauses[i];
     }
@@ -591,7 +578,6 @@ int sodium_solver_solve(SodiumSolver* s) {
         if (s->assumption_count > 0) {
             for (size_t i = 0; i < s->assumption_count; i++) {
                 int a_lit = s->assumptions[i];
-                // Check if assumption variable was involved in the conflict or falsified
                 if (s->failed_core_count >= s->failed_core_cap) {
                     s->failed_core_cap *= 2;
                     s->failed_core = (int*)realloc(s->failed_core, s->failed_core_cap * sizeof(int));
@@ -617,8 +603,6 @@ int sodium_solver_solve(SodiumSolver* s) {
     free(all_clauses);
 
     return s->last_status;
-
-    return s->last_status;
 }
 
 int sodium_solver_get_value(SodiumSolver* s, int lit) {
@@ -632,82 +616,15 @@ int sodium_solver_get_value(SodiumSolver* s, int lit) {
 bool sodium_solver_is_failed_assumption(SodiumSolver* s, int lit) {
     if (!s || s->last_status != SODIUM_STATUS_UNSATISFIABLE) return false;
     for (size_t i = 0; i < s->failed_core_count; i++) {
-        if (s->failed_core[i] == lit) return true;
+        if (s->failed_core[i] == lit) {
+            return true;
+        }
     }
     return false;
 }
 
-int sodium_solver_get_variable_count(const SodiumSolver* s) {
-    return s ? s->max_variable : 0;
-}
-
-int sodium_solver_get_clause_count(const SodiumSolver* s) {
-    return s ? (int)s->clause_count : 0;
-}
-
 // ============================================================================
-// SECTION 4: MODE 2 - NLP PROMPT SCHEMA GENERATOR
-// ============================================================================
-
-static const char* SODIUM_NLP_SYSTEM_PROMPT =
-"You are the formal logic compiler for the Sodium Automated Reasoning Engine.\n"
-"Your task is to transform the user's natural language requirements into a strictly valid CNF JSON object.\n\n"
-"Output ONLY a single raw JSON object with NO markdown code fences (no ```json), NO conversational preamble, and NO trailing explanation.\n\n"
-"The output MUST conform exactly to this JSON schema:\n"
-"{\n"
-"  \"format\": \"cnf\",\n"
-"  \"solver_config\": {\n"
-"    \"name\": \"sodium-cdcl\",\n"
-"    \"timeout_seconds\": 10,\n"
-"    \"verbose\": false\n"
-"  },\n"
-"  \"metadata\": {\n"
-"    \"description\": \"<Brief summary of the verified requirements>\",\n"
-"    \"variable_mapping\": {\n"
-"      \"1\": \"<Atomic_Condition_Or_Component_1>\",\n"
-"      \"2\": \"<Atomic_Condition_Or_Component_2>\"\n"
-"    }\n"
-"  },\n"
-"  \"clauses\": [\n"
-"    [ <signed_integer_literals>, 0 ]\n"
-"  ],\n"
-"  \"assumptions\": [ <optional_assumed_literals> ]\n"
-"}\n\n"
-"Rules for Compilation:\n"
-"1. Identify all distinct atomic boolean propositions and assign each a 1-based integer ID in 'variable_mapping' (e.g. \"1\": \"Power_Active\", \"2\": \"Backup_Online\").\n"
-"2. Translate all requirements into Conjunctive Normal Form (CNF) clauses:\n"
-"   - Positive integer N represents proposition N is TRUE.\n"
-"   - Negative integer -N represents proposition N is FALSE.\n"
-"   - Every clause array MUST end with 0 as a terminator (e.g. [-1, 2, 0]).\n"
-"3. Standard Logic Equivalences:\n"
-"   - 'IF A THEN B' becomes (NOT A OR B) -> [-A, B, 0]\n"
-"   - 'A and B cannot be active together' becomes (NOT A OR NOT B) -> [-A, -B, 0]\n"
-"   - 'Choose exactly ONE of A or B' becomes [[A, B, 0], [-A, -B, 0]]\n"
-"   - 'Always require A' becomes [A, 0]\n"
-"   - 'Require A unless B' becomes (A OR B) -> [A, B, 0]\n"
-"4. Put any specific hypothetical condition or what-if query in the 'assumptions' array.\n";
-
-int sodium_api_build_nlp_payload(const char* user_prompt, char** out_payload_json) {
-    if (!out_payload_json) return -1;
-    *out_payload_json = NULL;
-
-    if (!user_prompt) user_prompt = "";
-
-    StringBuilder sb;
-    sb_init(&sb, 1024);
-
-    sb_append_str(&sb, "{\n  \"userPrompt\": ");
-    sb_append_json_str(&sb, user_prompt);
-    sb_append_str(&sb, ",\n  \"SystemPrompt\": ");
-    sb_append_json_str(&sb, SODIUM_NLP_SYSTEM_PROMPT);
-    sb_append_str(&sb, "\n}\n");
-
-    *out_payload_json = sb.data;
-    return 0;
-}
-
-// ============================================================================
-// SECTION 5: MODE 1 - SAT LOGIC JSON PIPELINE
+// SECTION 4: MODE 1 - SAT LOGIC JSON PIPELINE
 // ============================================================================
 
 int sodium_api_solve_json(const char* json_request, char** out_json_response) {
