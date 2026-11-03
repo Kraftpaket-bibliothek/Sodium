@@ -11,7 +11,9 @@ TESTS = test_memory_allocation \
         test_backtrack \
         test_restart \
         test_database_refresh \
-        test_solve_integration
+        test_solve_integration \
+        test_benchmarks \
+        test_10m_clauses
 
 .PHONY: all run clean
 

@@ -27,6 +27,10 @@
 
 #include "../CDCL/CDCL.h"   /* CDCLSolver, Clause, INITIALIZE_SOLVER, … */
 
+#ifndef ANALYSIS_ERROR
+#define ANALYSIS_ERROR -1
+#endif
+
 /* ── Global counters (one set per binary, all statics are local to the TU) ── */
 static int th_pass_count    = 0;
 static int th_fail_count    = 0;
