@@ -97,8 +97,8 @@ void vsids_destroy(VSIDS* vsids) {
         delete_record(vsids->manager, vsids->activity_handle);
         if (vsids->owns_manager) {
             destroy_memory_manager(vsids->manager);
-            vsids->manager = NULL;
         }
+        vsids->manager = NULL;
     }
 
     vsids->variable_count = 0;

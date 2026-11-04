@@ -126,13 +126,16 @@ static inline void ADD_ORIGINAL_CLAUSE(CDCLSolver* solver, Clause* clause) {
     ATTACH_CLAUSE(solver, clause);
 }
 
-static inline void INITIALIZE_UNIT_PROPAGATION(CDCLSolver* solver) {
+static inline SolverMode INITIALIZE_UNIT_PROPAGATION(CDCLSolver* solver) {
     for (int i = 0; i < solver->clause_count; i++) {
         Clause* C = solver->clauses[i];
         if (C != NULL && C->size == 1) {
-            ENQUEUE(solver, C->literals[0], C);
+            if (!ENQUEUE(solver, C->literals[0], C)) {
+                return UNSAT;
+            }
         }
     }
+    return (SolverMode)SUCCESS;
 }
 
 SolverMode INITIALIZE_SOLVER(CDCLSolver* solver, int variables, Clause** input_clauses, int input_clause_count) {
@@ -160,7 +163,11 @@ SolverMode INITIALIZE_SOLVER(CDCLSolver* solver, int variables, Clause** input_c
     }
 
     // INITIALIZE_UNIT_PROPAGATION(solver)
-    INITIALIZE_UNIT_PROPAGATION(solver);
+    if (INITIALIZE_UNIT_PROPAGATION(solver) == UNSAT) {
+        solver->solver_mode = UNSAT;
+        CLEANUP_SOLVER(solver);
+        return UNSAT;
+    }
 
     // RETURN SUCCESS
     return (SolverMode)SUCCESS;
@@ -178,7 +185,7 @@ void ATTACH_CLAUSE(CDCLSolver* solver, Clause* C) {
     //     Do not add it to a two-watch list.
     //     Return.
     if (C->size <= 1) {
-        if (C->size == 1) {
+        if (C->size == 1 && solver->assignment && solver->assignment[abs(C->literals[0])] == UNASSIGNED) {
             ENQUEUE(solver, C->literals[0], C);
         }
         return;
@@ -399,6 +406,7 @@ int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_l
     int path_count = 0;
     int trail_index = solver->trail_size - 1;
     Clause* current_clause = conflict_clause;
+    int pivot_var = 0;
 
     // LOOP:
     while (true) {
@@ -406,6 +414,10 @@ int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_l
         for (int i = 0; i < current_clause->size; i++) {
             int L = current_clause->literals[i];
             int variable = abs(L);
+
+            if (variable == pivot_var) {
+                continue;
+            }
 
             if (solver->seen[variable]) {
                 continue;
@@ -480,6 +492,7 @@ int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_l
             return ANALYSIS_ERROR;
         }
 
+        pivot_var = variable;
         current_clause = reason_clause;
     }
 
@@ -1115,10 +1128,12 @@ void DESTROY_SOLVER(CDCLSolver* solver) {
 
     // VSIDS_CLEANUP(solver.vsids).
     vsids_cleanup(&solver->vsids);
+    memset(&solver->vsids, 0, sizeof(solver->vsids));
 
     // Destroy the MemoryManager only after every dependent
     // subsystem has finished using it.
     cleanup_memory_manager(&solver->memory_manager);
+    memset(&solver->memory_manager, 0, sizeof(solver->memory_manager));
 
     // Clear all pointers and reset the solver state.
     solver->number_of_variables = 0;

@@ -229,7 +229,7 @@ Status pop_free_handle(MemoryManager* manager, size_t* out_index) {
 
 
 Status validate_handle(const MemoryManager* manager, RecordHandle handle, size_t* out_offset) {
-    if (!manager) return STATUS_INVALID;
+    if (!manager || !manager->handle_table || !manager->buffer) return STATUS_INVALID;
     if (handle.index >= manager->handle_table_capacity) return STATUS_INVALID;
 
     HandleEntry entry = manager->handle_table[handle.index];
@@ -559,6 +559,13 @@ void cleanup_memory_manager(MemoryManager *manager) {
     manager->buffer = NULL;
     manager->handle_table = NULL;
     manager->free_handles.items = NULL;
+    manager->buffer_capacity = 0;
+    manager->handle_table_capacity = 0;
+    manager->used_slots = 0;
+    manager->next_unused_handle = 0;
+    manager->free_handles.length = 0;
+    manager->free_handles.capacity = 0;
+    manager->wasted_slots = 0;
 }
 void destroy_memory_manager(MemoryManager* manager) {
     if (!manager) return;

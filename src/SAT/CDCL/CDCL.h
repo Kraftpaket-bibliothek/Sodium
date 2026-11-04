@@ -36,6 +36,7 @@ typedef enum {
 #define FAILURE            -1
 #define ERROR              -1
 #define CONTINUE            1
+#define ANALYSIS_ERROR     -1
 
 /* Helper macros for signed literal representation */
 #define VARIABLE_OF(lit)        (abs(lit))
