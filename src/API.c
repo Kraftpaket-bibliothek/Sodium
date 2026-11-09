@@ -62,11 +62,6 @@ static void api_sb_append_str(ApiStringBuilder* sb, const char* str) {
     sb->data[sb->length] = '\0';
 }
 
-static void api_sb_append_char(ApiStringBuilder* sb, char c) {
-    api_sb_ensure(sb, 1);
-    sb->data[sb->length++] = c;
-    sb->data[sb->length] = '\0';
-}
 
 static void api_sb_append_int(ApiStringBuilder* sb, long long val) {
     char buf[32];

@@ -120,9 +120,29 @@ static const char* const EMBEDDED_INDEX_HTML =
 "    td { padding: 10px; border-bottom: 1px solid var(--card-border); }\n"
 "    .pill-true { background: rgba(37, 162, 68, 0.2); color: #42BE65; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; }\n"
 "    .pill-false { background: rgba(218, 30, 40, 0.2); color: #FA4D56; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; }\n"
+"    .btn-nonllm { background: #58169C !important; color: #FFF !important; border: 1px solid var(--purple-light) !important; }\n"
 "  </style>\n"
 "</head>\n"
 "<body>\n"
+"  <!-- Non-LLM Guidance Modal Popup -->\n"
+"  <div id=\"nlp-guidance-modal\" style=\"display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center;\">\n"
+"    <div style=\"background:var(--card-bg);border:1px solid var(--purple-main);border-radius:12px;padding:24px;max-width:540px;display:flex;flex-direction:column;gap:14px;box-shadow:0 12px 36px rgba(0,0,0,0.8);\">\n"
+"      <h3 style=\"color:var(--purple-light);font-size:18px;\">ℹ️ Non-LLM Classical NLP Active</h3>\n"
+"      <p style=\"font-size:14px;line-height:1.5;color:#E0E0E0;\">\n"
+"        You have toggled to Sodium's offline, deterministic <strong>Non-LLM Rule &amp; Math Compiler</strong>.\n"
+"      </p>\n"
+"      <div style=\"background:var(--code-bg);border-left:3px solid var(--purple-main);padding:12px;border-radius:6px;font-size:13px;line-height:1.6;color:#C9C5D6;\">\n"
+"        <strong style=\"color:#FFF;\">Important Writing Guidelines:</strong><br/>\n"
+"        Please write your specifications in <strong>proper English</strong> or <strong>mathematical equations</strong>. Each rule must be <strong>nuanced</strong> and <strong>well-separated</strong> using periods (.) or semicolons (;).<br/><br/>\n"
+"        <strong style=\"color:#FFF;\">Supported Formats:</strong><br/>\n"
+"        • Implication: <em>If Service A is active then Service B must be online.</em><br/>\n"
+"        • Exclusion: <em>Service A and Service B cannot be active together.</em><br/>\n"
+"        • Equivalence: <em>Service A is equivalent to Service B.</em><br/>\n"
+"        • Equations: <em>x + y &lt;= 10; Count &gt;= 2; A -&gt; B.</em>\n"
+"      </div>\n"
+"      <button class=\"btn-solve\" style=\"align-self:flex-end;padding:8px 20px;font-size:13px;cursor:pointer;\" onclick=\"closeNLPModal()\">Understood &amp; Proceed</button>\n"
+"    </div>\n"
+"  </div>\n"
 "  <div class=\"container\">\n"
 "    <header>\n"
 "      <div class=\"brand\">\n"
@@ -140,6 +160,10 @@ static const char* const EMBEDDED_INDEX_HTML =
 "          <button class=\"tab-btn active\" onclick=\"setMode('dimacs')\">DIMACS CNF</button>\n"
 "          <button class=\"tab-btn\" onclick=\"setMode('json')\">Mode 1 JSON</button>\n"
 "          <button class=\"tab-btn\" onclick=\"setMode('nlp')\">Natural Language (NLP)</button>\n"
+"        </div>\n"
+"        <div id=\"nlp-engine-controls\" style=\"display:none;align-items:center;justify-content:space-between;padding:4px 0;\">\n"
+"          <span style=\"font-size:12px;color:var(--text-muted);\">NLP Engine:</span>\n"
+"          <button id=\"engine-toggle-btn\" class=\"tab-btn\" style=\"font-size:12px;padding:4px 12px;background:var(--code-bg);border:1px solid var(--card-border);\" onclick=\"toggleNLPEngine()\">LLM (AI)</button>\n"
 "        </div>\n"
 "        <div class=\"presets\">\n"
 "          <label>Presets:</label>\n"
@@ -172,6 +196,23 @@ static const char* const EMBEDDED_INDEX_HTML =
 "  </div>\n"
 "  <script>\n"
 "    let currentMode = 'dimacs';\n"
+"    let nlpEngine = 'llm';\n"
+"    function toggleNLPEngine() {\n"
+"      const btn = document.getElementById('engine-toggle-btn');\n"
+"      if (nlpEngine === 'llm') {\n"
+"        nlpEngine = 'non-llm';\n"
+"        btn.innerText = 'Non-LLM (Classical NLP)';\n"
+"        btn.classList.add('btn-nonllm');\n"
+"        document.getElementById('nlp-guidance-modal').style.display = 'flex';\n"
+"      } else {\n"
+"        nlpEngine = 'llm';\n"
+"        btn.innerText = 'LLM (AI)';\n"
+"        btn.classList.remove('btn-nonllm');\n"
+"      }\n"
+"    }\n"
+"    function closeNLPModal() {\n"
+"      document.getElementById('nlp-guidance-modal').style.display = 'none';\n"
+"    }\n"
 "    const PRESETS = {\n"
 "      nqueens4: \"c N-Queens 4x4 instance\\np cnf 16 84\\n1 2 3 4 0\\n5 6 7 8 0\\n9 10 11 12 0\\n13 14 15 16 0\\n-1 -2 0\\n-1 -3 0\\n-1 -4 0\\n-2 -3 0\\n-2 -4 0\\n-3 -4 0\\n-5 -6 0\\n-5 -7 0\\n-5 -8 0\\n-6 -7 0\\n-6 -8 0\\n-7 -8 0\\n-9 -10 0\\n-9 -11 0\\n-9 -12 0\\n-10 -11 0\\n-10 -12 0\\n-11 -12 0\\n-13 -14 0\\n-13 -15 0\\n-13 -16 0\\n-14 -15 0\\n-14 -16 0\\n-15 -16 0\\n-1 -5 0\\n-1 -9 0\\n-1 -13 0\\n-5 -9 0\\n-5 -13 0\\n-9 -13 0\\n-2 -6 0\\n-2 -10 0\\n-2 -14 0\\n-6 -10 0\\n-6 -14 0\\n-10 -14 0\\n-3 -7 0\\n-3 -11 0\\n-3 -15 0\\n-7 -11 0\\n-7 -15 0\\n-11 -15 0\\n-4 -8 0\\n-4 -12 0\\n-4 -16 0\\n-8 -12 0\\n-8 -16 0\\n-12 -16 0\\n-1 -6 0\\n-6 -11 0\\n-11 -16 0\\n-1 -11 0\\n-6 -16 0\\n-1 -16 0\\n-2 -7 0\\n-7 -12 0\\n-2 -12 0\\n-5 -10 0\\n-10 -15 0\\n-5 -15 0\\n-9 -14 0\\n-3 -8 0\\n-4 -7 0\\n-7 -10 0\\n-10 -13 0\\n-4 -10 0\\n-7 -13 0\\n-4 -13 0\\n-3 -6 0\\n-6 -9 0\\n-3 -9 0\\n-8 -11 0\\n-11 -14 0\\n-8 -14 0\\n-2 -5 0\\n-12 -15 0\",\n"
 "      php32: \"c Pigeonhole Principle (3 pigeons into 2 holes) [UNSAT]\\np cnf 6 9\\n1 2 0\\n3 4 0\\n5 6 0\\n-1 -3 0\\n-1 -5 0\\n-3 -5 0\\n-2 -4 0\\n-2 -6 0\\n-4 -6 0\",\n"
@@ -181,8 +222,12 @@ static const char* const EMBEDDED_INDEX_HTML =
 "      currentMode = mode;\n"
 "      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));\n"
 "      event.target.classList.add('active');\n"
-"      if(mode === 'dimacs') loadPreset();\n"
-"      else if(mode === 'json') {\n"
+"      const nlpControls = document.getElementById('nlp-engine-controls');\n"
+"      if(mode === 'dimacs') {\n"
+"        if(nlpControls) nlpControls.style.display = 'none';\n"
+"        loadPreset();\n"
+"      } else if(mode === 'json') {\n"
+"        if(nlpControls) nlpControls.style.display = 'none';\n"
 "        document.getElementById('code-editor').value = JSON.stringify({\n"
 "          format: 'cnf',\n"
 "          solver_config: { name: 'sodium-cdcl', timeout_seconds: 10, verbose: false },\n"
@@ -191,6 +236,7 @@ static const char* const EMBEDDED_INDEX_HTML =
 "          assumptions: [1]\n"
 "        }, null, 2);\n"
 "      } else if(mode === 'nlp') {\n"
+"        if(nlpControls) nlpControls.style.display = 'flex';\n"
 "        document.getElementById('code-editor').value = 'Server A and Server B cannot be active together. Server A is currently active. Always ensure at least one server is online.';\n"
 "      }\n"
 "    }\n"
@@ -211,7 +257,7 @@ static const char* const EMBEDDED_INDEX_HTML =
 "      } else if(currentMode === 'nlp') {\n"
 "        endpoint = '/api/v1/nlp-solve';\n"
 "        headers['Content-Type'] = 'application/json';\n"
-"        body = JSON.stringify({ prompt: text });\n"
+"        body = JSON.stringify({ prompt: text, engine: nlpEngine });\n"
 "      }\n"
 "      try {\n"
 "        const res = await fetch(endpoint, { method: 'POST', headers, body });\n"
@@ -440,8 +486,11 @@ static void* handle_client_connection(void* arg) {
             }
 
             // Pipe prompt into Python llm_router.py
+            bool is_non_llm = (strstr(body, "non-llm") != NULL);
+            const char* py_bin = (access(".venv/bin/python3", X_OK) == 0) ? ".venv/bin/python3" : "python3";
             char cmd[4096];
-            snprintf(cmd, sizeof(cmd), "python3 src/NLP/llm_router.py --text \"%s\" 2>/dev/null", extracted_prompt);
+            snprintf(cmd, sizeof(cmd), "%s src/NLP/llm_router.py %s --text \"%s\" 2>/dev/null",
+                     py_bin, is_non_llm ? "--engine non-llm" : "", extracted_prompt);
 
             FILE* fp = popen(cmd, "r");
             if (!fp) {
@@ -628,6 +677,7 @@ static void print_usage(const char* prog_name) {
     printf("  -j, --json <string>      Solve a JSON CNF formula string directly\n");
     printf("  -d, --dimacs <string>    Solve a DIMACS CNF formula string directly\n");
     printf("  -n, --nlp <prompt>       Translate natural language via NLP bridge and solve\n");
+    printf("  --non-llm                Use deterministic Classical NLP pipeline instead of LLM\n");
     printf("  -b, --benchmark          Display high-precision microsecond execution metrics\n");
     printf("  -g, --gui                Launch the native C++ Dear ImGui Desktop UI\n");
     printf("\nServer & Cloud Deployment (HTTPS Web Serving):\n");
@@ -651,6 +701,7 @@ int main(int argc, char** argv) {
     bool serve_mode = false;
     bool benchmark_mode = false;
     bool gui_mode = false;
+    bool non_llm_mode = false;
     int port = 8080;
     const char* host = "0.0.0.0";
 
@@ -685,6 +736,8 @@ int main(int argc, char** argv) {
             dimacs_input = argv[++i];
         } else if ((strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--nlp") == 0) && i + 1 < argc) {
             nlp_prompt = argv[++i];
+        } else if (strcmp(argv[i], "--non-llm") == 0) {
+            non_llm_mode = true;
         }
     }
 
@@ -740,9 +793,12 @@ int main(int argc, char** argv) {
         text_to_solve = dimacs_input;
         is_json = false;
     } else if (nlp_prompt) {
-        printf("[*] Routing natural language specification to Python Pydantic bridge...\n");
+        const char* py_bin = (access(".venv/bin/python3", X_OK) == 0) ? ".venv/bin/python3" : "python3";
+        printf("[*] Routing natural language specification to Python %s pipeline...\n",
+               non_llm_mode ? "Classical Non-LLM" : "Pydantic LLM");
         char cmd[4096];
-        snprintf(cmd, sizeof(cmd), "python3 src/NLP/llm_router.py --text \"%s\" 2>/dev/null", nlp_prompt);
+        snprintf(cmd, sizeof(cmd), "%s src/NLP/llm_router.py %s --text \"%s\" 2>/dev/null",
+                 py_bin, non_llm_mode ? "--engine non-llm" : "", nlp_prompt);
 
         FILE* fp = popen(cmd, "r");
         if (!fp) {

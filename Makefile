@@ -46,7 +46,7 @@ CORE_SRCS   = \
     src/SAT/CDCL/CDCL.c \
     src/SAT/CDCL/Clauses/clause_array.c \
     src/SAT/CDCL/VSIDS.c \
-    src/SAT/CDCL/Memory/memory.c \
+    src/SAT/CDCL/memory.c \
     src/NLP/nlp_api.c
 
 # ---- GUI-Specific Sources (Dear ImGui + GLFW backend + C++ UI) ----
@@ -88,7 +88,7 @@ server:
 	@echo "========================================================"
 	@echo " Building Sodium (Headless CLI + Web Server)..."
 	@echo "========================================================"
-	$(CXX) $(CXXFLAGS) \
+	clang -std=c11 -O2 -Wall -Wextra -pthread \
 		-Isrc -Isrc/SAT -Isrc/SAT/CDCL -Isrc/NLP \
 		$(CORE_SRCS) \
 		-o $(TARGET)

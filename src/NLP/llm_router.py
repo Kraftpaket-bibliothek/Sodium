@@ -614,6 +614,13 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "-e", "--engine",
+        type=str,
+        default="llm",
+        choices=["llm", "non-llm"],
+        help="NLP translation engine: 'llm' (neural API/local model) or 'non-llm' (deterministic classical NLP algorithm)."
+    )
+    parser.add_argument(
         "-p", "--provider",
         type=str,
         default="local",
@@ -699,19 +706,33 @@ def main() -> None:
     if args.api_key:
         config.api_key = args.api_key
 
-    router = SodiumNLPRouter(config)
+    if args.engine == "non-llm":
+        if args.verbose:
+            sys.stderr.write("[*] Using Classical Non-LLM NLP Pipeline (Deterministic Algorithm)\n")
+        try:
+            from .NLPAlgo.classical_pipeline import ClassicalNLPPipeline
+        except ImportError:
+            from NLPAlgo.classical_pipeline import ClassicalNLPPipeline
+        pipeline = ClassicalNLPPipeline()
+        try:
+            cnf_request = pipeline.compile_text(input_text)
+        except Exception as e:
+            sys.stderr.write(f"\n[Classical NLP Compilation Failed]: {e}\n")
+            sys.exit(1)
+    else:
+        router = SodiumNLPRouter(config)
 
-    if args.verbose:
-        sys.stderr.write(f"[*] Provider: {config.provider}\n")
-        sys.stderr.write(f"[*] Base URL: {config.base_url}\n")
-        sys.stderr.write(f"[*] Model:    {config.model}\n")
-        sys.stderr.write("[*] Sending structured request with Pydantic JSON schema...\n")
+        if args.verbose:
+            sys.stderr.write(f"[*] Provider: {config.provider}\n")
+            sys.stderr.write(f"[*] Base URL: {config.base_url}\n")
+            sys.stderr.write(f"[*] Model:    {config.model}\n")
+            sys.stderr.write("[*] Sending structured request with Pydantic JSON schema...\n")
 
-    try:
-        cnf_request = router.translate(input_text)
-    except Exception as e:
-        sys.stderr.write(f"\n[Translation Failed]: {e}\n")
-        sys.exit(1)
+        try:
+            cnf_request = router.translate(input_text)
+        except Exception as e:
+            sys.stderr.write(f"\n[Translation Failed]: {e}\n")
+            sys.exit(1)
 
     formatted_json = cnf_request.to_json_string(indent=2)
 
