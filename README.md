@@ -211,26 +211,104 @@ clang -Wall -Wextra -O3 -I src/SAT/CDCL vsids_example.c \
 
 ## 🚀 Quickstart
 
-### Prerequisites
-- Modern C Compiler (`clang` or `gcc`) with C11 support
-
-### Building the CDCL Solver Engine
+### Step 1 — Clone the Repository
 
 ```bash
-# Clone the repository
 git clone https://github.com/Aditya-B-007/Sodium.git
 cd Sodium
-
-# Compile the core CDCL solver object modules
-clang -Wall -Wextra -Wpedantic -O3 -I src/SAT/CDCL -c \
-    src/SAT/CDCL/memory.c \
-    src/SAT/CDCL/VSIDS.c \
-    src/SAT/CDCL/CDCL.c
 ```
+
+---
+
+### Step 2 — Build the Application
+
+Sodium ships with a `Makefile` so you never need to type a long build command.
+
+#### Option A — Full Application (Desktop UI + Web Server + CLI)
+
+This builds the native **Royal Purple Dear ImGui desktop window**, the embedded **HTTPS-ready web server**, and the **command-line solver** all in one binary.
+
+**First, install the required dependencies (once only):**
+
+```bash
+make deps
+```
+
+This automatically installs GLFW (the window system) via Homebrew and downloads Dear ImGui into the project. You need an internet connection and [Homebrew](https://brew.sh) will be installed if it isn't already.
+
+**Then build everything:**
+
+```bash
+make
+```
+
+#### Option B — Headless Build (Web Server + CLI only, no desktop window)
+
+If you just want to try the web interface or the command-line solver without installing any extra dependencies:
+
+```bash
+make server
+```
+
+No Homebrew, no ImGui — this works out of the box with just the standard Clang compiler that ships with macOS.
+
+---
+
+### Step 3 — Run the Application
+
+After building, you have one binary: `./sodium`. Here's what you can do with it:
+
+#### Launch the Native Desktop UI
+```bash
+./sodium --gui
+```
+Opens the Royal Purple & White Dear ImGui desktop studio with the Guided Rule Builder, constraint editor, and live conflict traceability.
+
+#### Launch the Interactive Web Studio
+```bash
+./sodium --serve --port 8080
+```
+Then open **http://localhost:8080** in any web browser. You'll see a full interactive web application where you can enter logical rules, choose from built-in presets (N-Queens, Pigeonhole Principle, Mutex Exclusion), and get real-time CDCL solving results — with no extra software needed.
+
+This mode is also **production-ready for cloud deployment**: just put Nginx or Caddy in front of it with an SSL certificate and your users can access it at `https://your-domain.com` from anywhere in the world.
+
+#### Solve from the Command Line
+```bash
+# Solve a DIMACS .cnf file
+./sodium --file problem.cnf
+
+# Solve and display microsecond timing
+./sodium --file problem.cnf --benchmark
+
+# Pipe a formula directly
+echo "p cnf 2 2
+1 2 0
+-1 2 0" | ./sodium
+
+# Translate natural language and solve (requires Python + an LLM configured)
+./sodium --nlp "Server A and Server B cannot both be active. Server A is online."
+```
+
+---
+
+### Quick Reference
+
+| Command | What it does |
+| :--- | :--- |
+| `make deps` | Installs GLFW + downloads Dear ImGui (run once) |
+| `make` | Full build: Desktop UI + Web Server + CLI |
+| `make server` | Headless build: Web Server + CLI only |
+| `make clean` | Removes the compiled binary |
+| `./sodium --gui` | Launches the native desktop window |
+| `./sodium --serve` | Starts the web studio at http://localhost:8080 |
+| `./sodium --file f.cnf` | Solves a DIMACS problem file |
+| `./sodium --help` | Prints all available options |
+
+---
 
 ### Programmatic Integration Example
 
-Save the following code as `example.c`:
+You can also embed the CDCL engine directly into your own C application:
 
 ```c
 #include "CDCL.h"
@@ -265,14 +343,13 @@ int main(void) {
 ```
 
 ```bash
-# Compile and run the complete CDCL solver application
 clang -Wall -Wextra -O3 -I src/SAT/CDCL example.c \
     src/SAT/CDCL/CDCL.c \
     src/SAT/CDCL/VSIDS.c \
     src/SAT/CDCL/memory.c \
-    -o sodium
+    -o my_solver
 
-./sodium
+./my_solver
 ```
 
 ---
@@ -290,6 +367,11 @@ clang -Wall -Wextra -O3 -I src/SAT/CDCL example.c \
 
 - [x] **Q4 2026**: High-performance CDCL Engine with 2WL, 1-UIP learning, and VSIDS.
 - [x] **Q4 2026**: Generational handle-based memory management with automated compaction.
+- [x] **Q4 2026**: Contiguous arena `ClauseArray` for zero-pointer-overhead clause storage.
+- [x] **Q4 2026**: Mode 1 JSON SAT API (`sat_api.c`) — CaDiCaL-compatible in-memory solver interface.
+- [x] **Q4 2026**: NLP reasoning bridge (`llm_router.py`) — Pydantic-enforced bidirectional LLM schema routing (OpenAI, Ollama, vLLM).
+- [x] **Q4 2026**: Unified system orchestrator (`sodium_orchestrator.c`) — single binary for desktop UI, web server, and CLI.
+- [x] **Q4 2026**: Embedded HTTPS-ready web studio with interactive CDCL solver, REST API, and Royal Purple UI.
 - [ ] **Q1 2027**: Natural Language Specification Compiler (LLM-guided translation with deterministic AST verification).
 - [ ] **Q2 2027**: Native SMT Theories:
   - Linear Real and Integer Arithmetic (LRA / LIA).

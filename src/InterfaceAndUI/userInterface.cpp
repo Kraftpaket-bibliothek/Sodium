@@ -1,13 +1,3 @@
-// ============================================================================
-// Sodium - Automated Reasoning & System Verification Studio
-// File: src/InterfaceAndUI/userInterface.cpp
-// Description: Modern Dear ImGui frontend with zero implementation jargon.
-// Theme: High-contrast Royal Purple & Pure White.
-// Features: Guided Rule Builder (fill-in-the-blanks, predefined templates,
-//           variable autocomplete, live logical preview, nested expressions,
-//           conflict traceability) and Direct Logic workspace.
-// ============================================================================
-
 #include <imgui.h>
 #include <vector>
 #include <string>
@@ -22,14 +12,6 @@
 #include <map>
 #include <set>
 #include "../API.h"
-
-// ============================================================================
-// SECTION 1: CLEAN API PLUGIN CONTRACT (Ready for API.h / API.c)
-// ============================================================================
-// These hooks link directly to the backend functions you will implement in
-// API.h and API.c. The UI handles interactive rule translation cleanly and
-// provides safe, interactive fallback verification out-of-the-box.
-// ============================================================================
 
 namespace SodiumPlugin {
 
@@ -75,9 +57,6 @@ namespace SodiumPlugin {
         std::vector<int> conflicting_rule_ids;
         std::vector<std::string> conflict_reasons;
     };
-
-    // --- FUTURE API PLUGIN SLOTS ---
-    // Plug in your API.h / API.c functions here.
 
     inline bool API_VerifyProblem(const char* formula_text,
                                   const AdvancedTuning& tuning,
@@ -152,10 +131,6 @@ namespace SodiumPlugin {
         sodium_api_reset();
     }
 }
-
-// ============================================================================
-// SECTION 2: SIGNATURE PURPLE & WHITE THEME CONFIGURATION
-// ============================================================================
 
 namespace SodiumTheme {
 
@@ -240,10 +215,6 @@ namespace SodiumTheme {
     }
 }
 
-// ============================================================================
-// SECTION 3: GUIDED RULE BUILDER DATA MODELS (Clean, Human Vocabulary)
-// ============================================================================
-
 enum class RuleType {
     REQUIREMENT,       // IF [A] THEN REQUIRE [B]
     INCOMPATIBILITY,   // [A] and [B] cannot be active together
@@ -299,10 +270,6 @@ struct SystemRule {
         return ss.str();
     }
 };
-
-// ============================================================================
-// SECTION 4: CONTROLLER & STATE MANAGEMENT
-// ============================================================================
 
 class SodiumUIController {
 public:
