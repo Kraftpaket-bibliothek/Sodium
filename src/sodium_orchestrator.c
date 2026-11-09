@@ -538,7 +538,7 @@ static void run_server_daemon(const char* host, int port) {
     }
 
     printf("====================================================================\n");
-    printf(" Sodium Automated Reasoning Engine Daemon Running\n");
+    printf(" Sodium Engine Daemon Running\n");
     printf(" Listening on: http://%s:%d\n", host, port);
     printf(" Serving Web Studio & REST API (Ready for HTTPS Reverse Proxy)\n");
     printf(" Press Ctrl+C to terminate cleanly.\n");
