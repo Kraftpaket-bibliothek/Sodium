@@ -347,6 +347,11 @@ static const char* const EMBEDDED_INDEX_HTML =
 "    function renderResults(data) {\n"
 "      const resp = data.response || {};\n"
 "      const badge = document.getElementById('global-badge');\n"
+"      if (data.error) {\n"
+"        badge.className = 'badge-status badge-unsat'; badge.innerText = 'ERROR';\n"
+"        document.getElementById('results-body').innerHTML = `<tr><td colspan=\"3\" style=\"text-align:center;padding:24px;color:#FA4D56;\"><strong>Error:</strong> ${data.error} ${data.details ? '<br/><small>' + data.details + '</small>' : ''}</td></tr>`;\n"
+"        return;\n"
+"      }\n"
 "      const status = resp.status || 'UNKNOWN';\n"
 "      if (status === 'SATISFIABLE') { badge.className = 'badge-status badge-sat'; badge.innerText = 'SATISFIABLE'; }\n"
 "      else if (status === 'UNSATISFIABLE') { badge.className = 'badge-status badge-unsat'; badge.innerText = 'UNSATISFIABLE'; }\n"
@@ -426,13 +431,61 @@ static void send_http_response(
     LOG_DEBUG("HTTP", "Sent %d %s (Content-Length: %zu)", status_code, status_text, body_len);
 }
 
+static const char* find_case_insensitive(const char* haystack, const char* needle) {
+    if (!haystack || !needle) return NULL;
+    size_t needle_len = strlen(needle);
+    for (const char* p = haystack; *p; p++) {
+        if (strncasecmp(p, needle, needle_len) == 0) {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+static void extract_json_field_string(const char* json, const char* field, char* out, size_t max_out) {
+    out[0] = '\0';
+    if (!json || !field) return;
+
+    char key[64];
+    snprintf(key, sizeof(key), "\"%s\"", field);
+    const char* p = strstr(json, key);
+    if (!p) return;
+
+    p = strchr(p, ':');
+    if (!p) return;
+    p++;
+
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p != '"') return;
+    p++; // skip opening quote
+
+    size_t idx = 0;
+    while (*p && idx + 1 < max_out) {
+        if (*p == '\\') {
+            p++;
+            if (*p == '"') { out[idx++] = '"'; p++; }
+            else if (*p == '\\') { out[idx++] = '\\'; p++; }
+            else if (*p == 'n') { out[idx++] = '\n'; p++; }
+            else if (*p == 't') { out[idx++] = '\t'; p++; }
+            else if (*p == 'r') { p++; }
+            else if (*p) { out[idx++] = *p; p++; }
+        } else if (*p == '"') {
+            break; // reached unescaped closing quote
+        } else {
+            out[idx++] = *p;
+            p++;
+        }
+    }
+    out[idx] = '\0';
+}
+
 static char* extract_http_body(const char* request, size_t req_len, size_t* out_body_len) {
     const char* marker = strstr(request, "\r\n\r\n");
     if (!marker) marker = strstr(request, "\n\n");
     if (!marker) return NULL;
 
     size_t header_len = (size_t)(marker - request) + (strncmp(marker, "\r\n\r\n", 4) == 0 ? 4 : 2);
-    if (header_len >= req_len) return NULL;
+    if (header_len > req_len) return NULL;
 
     size_t body_len = req_len - header_len;
     char* body = (char*)malloc(body_len + 1);
@@ -448,15 +501,31 @@ static void* handle_client_connection(void* arg) {
     int client_fd = ctx->client_fd;
 
     char buffer[65536];
-    int bytes_read = 0;
+    int total_bytes = 0;
+    const char* header_end = NULL;
+    size_t header_len = 0;
+    size_t content_length = 0;
 
+    // Phase 1: Read HTTP request headers until \r\n\r\n or \n\n
+    while (total_bytes < (int)sizeof(buffer) - 1) {
 #if defined(_WIN32)
-    bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+        int n = recv(client_fd, buffer + total_bytes, sizeof(buffer) - 1 - total_bytes, 0);
 #else
-    bytes_read = (int)read(client_fd, buffer, sizeof(buffer) - 1);
+        int n = (int)read(client_fd, buffer + total_bytes, sizeof(buffer) - 1 - total_bytes);
 #endif
+        if (n <= 0) break;
+        total_bytes += n;
+        buffer[total_bytes] = '\0';
 
-    if (bytes_read <= 0) {
+        header_end = strstr(buffer, "\r\n\r\n");
+        if (!header_end) header_end = strstr(buffer, "\n\n");
+        if (header_end) {
+            header_len = (size_t)(header_end - buffer) + (strncmp(header_end, "\r\n\r\n", 4) == 0 ? 4 : 2);
+            break;
+        }
+    }
+
+    if (!header_end || total_bytes <= 0) {
 #if defined(_WIN32)
         closesocket(client_fd);
 #else
@@ -466,15 +535,37 @@ static void* handle_client_connection(void* arg) {
         return NULL;
     }
 
-    buffer[bytes_read] = '\0';
+    // Phase 2: Parse Content-Length header if present
+    const char* cl_pos = find_case_insensitive(buffer, "Content-Length:");
+    if (cl_pos) {
+        content_length = (size_t)strtoul(cl_pos + 15, NULL, 10);
+    }
 
-    // Parse HTTP Request Line (e.g., "POST /api/v1/dimacs HTTP/1.1")
+    // Phase 3: Read remaining body bytes if needed
+    size_t body_received = (size_t)total_bytes - header_len;
+    while (body_received < content_length && total_bytes < (int)sizeof(buffer) - 1) {
+        size_t needed = content_length - body_received;
+        size_t space_left = sizeof(buffer) - 1 - total_bytes;
+        size_t to_read = (needed < space_left) ? needed : space_left;
+
+#if defined(_WIN32)
+        int n = recv(client_fd, buffer + total_bytes, (int)to_read, 0);
+#else
+        int n = (int)read(client_fd, buffer + total_bytes, to_read);
+#endif
+        if (n <= 0) break;
+        total_bytes += n;
+        body_received += (size_t)n;
+        buffer[total_bytes] = '\0';
+    }
+
+    // Parse HTTP Request Line (e.g., "POST /api/v1/nlp-solve HTTP/1.1")
     char method[16] = {0};
     char path[256] = {0};
     sscanf(buffer, "%15s %255s", method, path);
 
-    LOG_INFO("HTTP", "Request: %s %s from client %s (FD: %d, Length: %d bytes)",
-             method, path, ctx->client_ip, client_fd, bytes_read);
+    LOG_INFO("HTTP", "Request: %s %s from client %s (FD: %d, Total: %d bytes, Body: %zu bytes)",
+             method, path, ctx->client_ip, client_fd, total_bytes, body_received);
 
     // 1. CORS Preflight
     if (strcmp(method, "OPTIONS") == 0) {
@@ -500,11 +591,12 @@ static void* handle_client_connection(void* arg) {
     // 4. REST Endpoint: Mode 1 JSON Solve
     else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/v1/solve") == 0) {
         size_t body_len = 0;
-        char* body = extract_http_body(buffer, (size_t)bytes_read, &body_len);
-        if (!body) {
+        char* body = extract_http_body(buffer, (size_t)total_bytes, &body_len);
+        if (!body || body_len == 0) {
             LOG_WARN("HTTP", "POST /api/v1/solve missing body");
             const char* err = "{\"error\":\"Missing request body\"}\n";
             send_http_response(client_fd, 400, "Bad Request", "application/json", err, strlen(err));
+            if (body) free(body);
         } else {
             LOG_INFO("API", "POST /api/v1/solve: Ingesting JSON payload (%zu bytes)", body_len);
             char* out_json = NULL;
@@ -523,11 +615,12 @@ static void* handle_client_connection(void* arg) {
     // 5. REST Endpoint: DIMACS Solve
     else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/v1/dimacs") == 0) {
         size_t body_len = 0;
-        char* body = extract_http_body(buffer, (size_t)bytes_read, &body_len);
-        if (!body) {
+        char* body = extract_http_body(buffer, (size_t)total_bytes, &body_len);
+        if (!body || body_len == 0) {
             LOG_WARN("HTTP", "POST /api/v1/dimacs missing formula body");
             const char* err = "{\"error\":\"Missing DIMACS formula body\"}\n";
             send_http_response(client_fd, 400, "Bad Request", "application/json", err, strlen(err));
+            if (body) free(body);
         } else {
             LOG_INFO("API", "POST /api/v1/dimacs: Ingesting formula (%zu bytes)", body_len);
             char* out_json = NULL;
@@ -546,75 +639,89 @@ static void* handle_client_connection(void* arg) {
     // 6. REST Endpoint: NLP Translation & Solve
     else if (strcmp(method, "POST") == 0 && strcmp(path, "/api/v1/nlp-solve") == 0) {
         size_t body_len = 0;
-        char* body = extract_http_body(buffer, (size_t)bytes_read, &body_len);
-        if (!body) {
-            LOG_WARN("HTTP", "POST /api/v1/nlp-solve missing NLP prompt body");
+        char* body = extract_http_body(buffer, (size_t)total_bytes, &body_len);
+        if (!body || body_len == 0) {
+            LOG_WARN("HTTP", "POST /api/v1/nlp-solve missing NLP prompt body (Body len: %zu)", body_len);
             const char* err = "{\"error\":\"Missing NLP prompt body\"}\n";
             send_http_response(client_fd, 400, "Bad Request", "application/json", err, strlen(err));
+            if (body) free(body);
         } else {
             // Extract "prompt" field if body is JSON
-            char extracted_prompt[2048] = {0};
-            char* p_pos = strstr(body, "\"prompt\"");
-            if (p_pos) {
-                char* colon = strchr(p_pos, ':');
-                if (colon) {
-                    char* q1 = strchr(colon, '"');
-                    if (q1) {
-                        char* q2 = strchr(q1 + 1, '"');
-                        if (q2) {
-                            size_t plen = (size_t)(q2 - (q1 + 1));
-                            if (plen < sizeof(extracted_prompt)) {
-                                strncpy(extracted_prompt, q1 + 1, plen);
-                            }
-                        }
-                    }
-                }
-            }
+            char extracted_prompt[32768] = {0};
+            extract_json_field_string(body, "prompt", extracted_prompt, sizeof(extracted_prompt));
             if (extracted_prompt[0] == '\0') {
                 strncpy(extracted_prompt, body, sizeof(extracted_prompt) - 1);
             }
 
-            // Pipe prompt into Python llm_router.py
             bool is_non_llm = (strstr(body, "non-llm") != NULL);
-            LOG_INFO("NLP", "POST /api/v1/nlp-solve: Engine [%s], Prompt: %.100s...",
-                     is_non_llm ? "non-llm" : "llm", extracted_prompt);
+            LOG_INFO("NLP", "POST /api/v1/nlp-solve: Engine [%s], Prompt length: %zu bytes",
+                     is_non_llm ? "non-llm" : "llm", strlen(extracted_prompt));
 
             const char* py_bin = (access(".venv/bin/python3", X_OK) == 0) ? ".venv/bin/python3" : "python3";
-            char cmd[4096];
-            snprintf(cmd, sizeof(cmd), "%s src/NLP/llm_router.py %s --text \"%s\" 2>/dev/null",
-                     py_bin, is_non_llm ? "--engine non-llm" : "", extracted_prompt);
 
-            FILE* fp = popen(cmd, "r");
-            if (!fp) {
-                LOG_ERROR("NLP", "Failed to invoke Python NLP router command");
-                const char* err = "{\"error\":\"Failed to invoke Python NLP router\"}\n";
-                send_http_response(client_fd, 500, "Internal Error", "application/json", err, strlen(err));
+            // Safe temporary file to avoid shell argument escaping limits and issues
+            char tmp_path[] = "/tmp/sodium_prompt_XXXXXX";
+            int tmp_fd = mkstemp(tmp_path);
+            if (tmp_fd < 0) {
+                LOG_ERROR("NLP", "Failed to create temporary file for NLP prompt");
+                const char* err = "{\"error\":\"Failed to create temporary prompt file\"}\n";
+                send_http_response(client_fd, 500, "Internal Server Error", "application/json", err, strlen(err));
             } else {
-                char nlp_json[32768] = {0};
-                size_t nread = fread(nlp_json, 1, sizeof(nlp_json) - 1, fp);
-                nlp_json[nread] = '\0';
-                pclose(fp);
+                write(tmp_fd, extracted_prompt, strlen(extracted_prompt));
+                close(tmp_fd);
 
-                if (nread > 0) {
-                    LOG_INFO("NLP", "Python NLP router generated %zu bytes of CNF JSON", nread);
-                    char* out_json = NULL;
-                    sodium_api_solve_json(nlp_json, &out_json);
-                    if (out_json) {
-                        send_http_response(client_fd, 200, "OK", "application/json", out_json, strlen(out_json));
-                        sodium_api_free_string(out_json);
-                    } else {
-                        send_http_response(client_fd, 200, "OK", "application/json", nlp_json, strlen(nlp_json));
-                    }
+                char cmd[1024];
+                snprintf(cmd, sizeof(cmd), "%s src/NLP/llm_router.py %s --file \"%s\" 2>/tmp/sodium_nlp_err.log",
+                         py_bin, is_non_llm ? "--engine non-llm" : "", tmp_path);
+
+                FILE* fp = popen(cmd, "r");
+                if (!fp) {
+                    LOG_ERROR("NLP", "Failed to execute Python subprocess: %s", cmd);
+                    unlink(tmp_path);
+                    const char* err = "{\"error\":\"Failed to invoke Python NLP router\"}\n";
+                    send_http_response(client_fd, 500, "Internal Server Error", "application/json", err, strlen(err));
                 } else {
-                    LOG_WARN("NLP", "Python NLP router returned 0 bytes");
-                    const char* err = "{\"error\":\"Python NLP router returned no output\"}\n";
-                    send_http_response(client_fd, 502, "Bad Gateway", "application/json", err, strlen(err));
+                    char nlp_json[65536] = {0};
+                    size_t nread = fread(nlp_json, 1, sizeof(nlp_json) - 1, fp);
+                    nlp_json[nread] = '\0';
+                    int pcode = pclose(fp);
+                    unlink(tmp_path);
+
+                    if (nread > 0) {
+                        LOG_INFO("NLP", "Python NLP router returned %zu bytes (Exit: %d)", nread, pcode);
+                        char* out_json = NULL;
+                        sodium_api_solve_json(nlp_json, &out_json);
+                        if (out_json) {
+                            send_http_response(client_fd, 200, "OK", "application/json", out_json, strlen(out_json));
+                            sodium_api_free_string(out_json);
+                        } else {
+                            send_http_response(client_fd, 200, "OK", "application/json", nlp_json, strlen(nlp_json));
+                        }
+                    } else {
+                        LOG_WARN("NLP", "Python NLP router returned 0 bytes (Exit: %d)", pcode);
+                        FILE* err_fp = fopen("/tmp/sodium_nlp_err.log", "r");
+                        char err_buf[512] = {0};
+                        if (err_fp) {
+                            size_t er = fread(err_buf, 1, sizeof(err_buf) - 1, err_fp);
+                            err_buf[er] = '\0';
+                            fclose(err_fp);
+                        }
+                        char err_resp[1024];
+                        snprintf(err_resp, sizeof(err_resp),
+                                 "{\"error\":\"Python NLP router returned no output\",\"details\":\"%.200s\"}\n",
+                                 err_buf[0] ? err_buf : "Compilation error in NLP pipeline");
+                        send_http_response(client_fd, 502, "Bad Gateway", "application/json", err_resp, strlen(err_resp));
+                    }
                 }
             }
             free(body);
         }
     }
-    // 7. Not Found
+    // 7. Ignore Browser Icon Prefetches
+    else if (strstr(path, "favicon.ico") || strstr(path, "apple-touch-icon")) {
+        send_http_response(client_fd, 204, "No Content", "text/plain", "", 0);
+    }
+    // 8. Not Found
     else {
         LOG_WARN("HTTP", "Endpoint not found: %s %s", method, path);
         const char* not_found = "{\"error\":\"Endpoint not found\"}\n";

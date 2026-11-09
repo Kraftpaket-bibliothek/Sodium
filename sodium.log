@@ -31,3 +31,205 @@
 [2026-11-09 21:54:59.322] [INFO ] [SOLVER  ] Invoking CDCL solver engine (JSON format)
 [2026-11-09 21:54:59.322] [INFO ] [SOLVER  ] Solve finished in 0.0210 ms. Status code: 10 (SATISFIABLE)
 [2026-11-09 21:54:59.322] [INFO ] [CORE    ] Sodium execution terminating with exit code: 0
+[2026-11-09 22:02:06.757] [INFO ] [CORE    ] ================================================================================
+[2026-11-09 22:02:06.758] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
+[2026-11-09 22:02:06.758] [INFO ] [CORE    ] Logging output initialized to: sodium.log
+[2026-11-09 22:02:06.758] [INFO ] [CORE    ] Sodium engine starting up (PID: 14973)
+[2026-11-09 22:02:06.758] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --serve --port 8080
+[2026-11-09 22:02:06.758] [INFO ] [CONFIG  ] Action logging destination: sodium.log
+[2026-11-09 22:02:06.758] [INFO ] [CORE    ] Mode selected: Web Server Daemon (Host: 0.0.0.0, Port: 8080)
+[2026-11-09 22:02:06.758] [INFO ] [SERVER  ] HTTP Daemon started on http://0.0.0.0:8080 (Socket FD: 4)
+[2026-11-09 22:02:09.399] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:09.442] [INFO ] [HTTP    ] Request: GET / from client 127.0.0.1 (FD: 5, Length: 461 bytes)
+[2026-11-09 22:02:09.442] [DEBUG] [HTTP    ] Sent 200 OK (Content-Length: 18187)
+[2026-11-09 22:02:17.131] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:17.131] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:02:17.131] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:02:17.131] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:02:29.997] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.047] [INFO ] [HTTP    ] Request: GET / from client 127.0.0.1 (FD: 5, Length: 426 bytes)
+[2026-11-09 22:02:30.047] [DEBUG] [HTTP    ] Sent 200 OK (Content-Length: 18187)
+[2026-11-09 22:02:30.056] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.056] [INFO ] [HTTP    ] Request: GET /apple-touch-icon-precomposed.png from client 127.0.0.1 (FD: 5, Length: 283 bytes)
+[2026-11-09 22:02:30.056] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon-precomposed.png
+[2026-11-09 22:02:30.056] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.093] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.094] [INFO ] [HTTP    ] Request: GET /apple-touch-icon.png from client 127.0.0.1 (FD: 5, Length: 271 bytes)
+[2026-11-09 22:02:30.094] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon.png
+[2026-11-09 22:02:30.094] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.128] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.128] [INFO ] [HTTP    ] Request: GET /favicon.ico from client 127.0.0.1 (FD: 5, Length: 262 bytes)
+[2026-11-09 22:02:30.128] [WARN ] [HTTP    ] Endpoint not found: GET /favicon.ico
+[2026-11-09 22:02:30.128] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.131] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.131] [INFO ] [HTTP    ] Request: GET /apple-touch-icon-precomposed.png from client 127.0.0.1 (FD: 5, Length: 283 bytes)
+[2026-11-09 22:02:30.131] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon-precomposed.png
+[2026-11-09 22:02:30.131] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.134] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.134] [INFO ] [HTTP    ] Request: GET /apple-touch-icon.png from client 127.0.0.1 (FD: 5, Length: 271 bytes)
+[2026-11-09 22:02:30.134] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon.png
+[2026-11-09 22:02:30.134] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.139] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.139] [INFO ] [HTTP    ] Request: GET /favicon.ico from client 127.0.0.1 (FD: 5, Length: 262 bytes)
+[2026-11-09 22:02:30.139] [WARN ] [HTTP    ] Endpoint not found: GET /favicon.ico
+[2026-11-09 22:02:30.139] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.142] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.145] [INFO ] [HTTP    ] Request: GET / from client 127.0.0.1 (FD: 5, Length: 473 bytes)
+[2026-11-09 22:02:30.145] [DEBUG] [HTTP    ] Sent 200 OK (Content-Length: 18187)
+[2026-11-09 22:02:30.148] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.148] [INFO ] [HTTP    ] Request: GET /apple-touch-icon-precomposed.png from client 127.0.0.1 (FD: 5, Length: 283 bytes)
+[2026-11-09 22:02:30.148] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon-precomposed.png
+[2026-11-09 22:02:30.148] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.151] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.151] [INFO ] [HTTP    ] Request: GET /apple-touch-icon.png from client 127.0.0.1 (FD: 5, Length: 271 bytes)
+[2026-11-09 22:02:30.151] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon.png
+[2026-11-09 22:02:30.151] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.153] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.153] [INFO ] [HTTP    ] Request: GET /favicon.ico from client 127.0.0.1 (FD: 5, Length: 262 bytes)
+[2026-11-09 22:02:30.153] [WARN ] [HTTP    ] Endpoint not found: GET /favicon.ico
+[2026-11-09 22:02:30.153] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.156] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.156] [INFO ] [HTTP    ] Request: GET /apple-touch-icon-precomposed.png from client 127.0.0.1 (FD: 5, Length: 283 bytes)
+[2026-11-09 22:02:30.156] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon-precomposed.png
+[2026-11-09 22:02:30.156] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.158] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.158] [INFO ] [HTTP    ] Request: GET /apple-touch-icon.png from client 127.0.0.1 (FD: 5, Length: 271 bytes)
+[2026-11-09 22:02:30.158] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon.png
+[2026-11-09 22:02:30.158] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:02:30.160] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:02:30.161] [INFO ] [HTTP    ] Request: GET /favicon.ico from client 127.0.0.1 (FD: 5, Length: 262 bytes)
+[2026-11-09 22:02:30.161] [WARN ] [HTTP    ] Endpoint not found: GET /favicon.ico
+[2026-11-09 22:02:30.161] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:05:59.282] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:05:59.282] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:05:59.282] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:05:59.282] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:06:02.372] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:06:02.372] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:06:02.372] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:06:02.372] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:06:03.746] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:06:03.747] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:06:03.747] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:06:03.747] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:06:18.243] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:06:18.244] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:06:18.244] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:06:18.244] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:06:18.951] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:06:18.952] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:06:18.952] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:06:18.952] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:06:19.134] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:06:19.134] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:06:19.134] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:06:19.135] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:06:19.292] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:06:19.293] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:06:19.293] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:06:19.293] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:06:19.460] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:06:19.461] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:06:19.461] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:06:19.461] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:06:26.374] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:06:26.375] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:06:26.375] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:06:26.375] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:09:19.877] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:19.878] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:09:19.878] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:09:19.878] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:09:34.554] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:34.555] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:09:34.555] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:09:34.555] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:09:34.878] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:34.879] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:09:34.879] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:09:34.879] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:09:35.046] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:35.046] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:09:35.046] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:09:35.046] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:09:35.204] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:35.204] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Length: 499 bytes)
+[2026-11-09 22:09:35.204] [WARN ] [HTTP    ] POST /api/v1/nlp-solve missing NLP prompt body
+[2026-11-09 22:09:35.204] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 36)
+[2026-11-09 22:09:37.213] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:37.214] [INFO ] [HTTP    ] Request: POST /api/v1/dimacs from client 127.0.0.1 (FD: 5, Length: 489 bytes)
+[2026-11-09 22:09:37.214] [WARN ] [HTTP    ] POST /api/v1/dimacs missing formula body
+[2026-11-09 22:09:37.214] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 40)
+[2026-11-09 22:09:37.653] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:37.654] [INFO ] [HTTP    ] Request: POST /api/v1/dimacs from client 127.0.0.1 (FD: 5, Length: 489 bytes)
+[2026-11-09 22:09:37.654] [WARN ] [HTTP    ] POST /api/v1/dimacs missing formula body
+[2026-11-09 22:09:37.654] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 40)
+[2026-11-09 22:09:37.853] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:37.854] [INFO ] [HTTP    ] Request: POST /api/v1/dimacs from client 127.0.0.1 (FD: 5, Length: 489 bytes)
+[2026-11-09 22:09:37.854] [WARN ] [HTTP    ] POST /api/v1/dimacs missing formula body
+[2026-11-09 22:09:37.854] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 40)
+[2026-11-09 22:09:43.468] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:43.468] [INFO ] [HTTP    ] Request: GET / from client 127.0.0.1 (FD: 5, Length: 455 bytes)
+[2026-11-09 22:09:43.468] [DEBUG] [HTTP    ] Sent 200 OK (Content-Length: 18187)
+[2026-11-09 22:09:43.571] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:43.571] [INFO ] [HTTP    ] Request: GET /apple-touch-icon-precomposed.png from client 127.0.0.1 (FD: 5, Length: 283 bytes)
+[2026-11-09 22:09:43.571] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon-precomposed.png
+[2026-11-09 22:09:43.571] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:09:43.622] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:43.622] [INFO ] [HTTP    ] Request: GET /apple-touch-icon.png from client 127.0.0.1 (FD: 5, Length: 271 bytes)
+[2026-11-09 22:09:43.622] [WARN ] [HTTP    ] Endpoint not found: GET /apple-touch-icon.png
+[2026-11-09 22:09:43.622] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:09:43.657] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:43.657] [INFO ] [HTTP    ] Request: GET /favicon.ico from client 127.0.0.1 (FD: 5, Length: 262 bytes)
+[2026-11-09 22:09:43.657] [WARN ] [HTTP    ] Endpoint not found: GET /favicon.ico
+[2026-11-09 22:09:43.657] [DEBUG] [HTTP    ] Sent 404 Not Found (Content-Length: 31)
+[2026-11-09 22:09:47.014] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:09:47.015] [INFO ] [HTTP    ] Request: POST /api/v1/dimacs from client 127.0.0.1 (FD: 5, Length: 489 bytes)
+[2026-11-09 22:09:47.015] [WARN ] [HTTP    ] POST /api/v1/dimacs missing formula body
+[2026-11-09 22:09:47.015] [DEBUG] [HTTP    ] Sent 400 Bad Request (Content-Length: 40)
+[2026-11-09 22:12:11.154] [INFO ] [CORE    ] ================================================================================
+[2026-11-09 22:12:11.155] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
+[2026-11-09 22:12:11.155] [INFO ] [CORE    ] Logging output initialized to: sodium.log
+[2026-11-09 22:12:11.155] [INFO ] [CORE    ] Sodium engine starting up (PID: 15298)
+[2026-11-09 22:12:11.155] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --serve --port 8085
+[2026-11-09 22:12:11.155] [INFO ] [CONFIG  ] Action logging destination: sodium.log
+[2026-11-09 22:12:11.155] [INFO ] [CORE    ] Mode selected: Web Server Daemon (Host: 0.0.0.0, Port: 8085)
+[2026-11-09 22:12:11.155] [INFO ] [SERVER  ] HTTP Daemon started on http://0.0.0.0:8085 (Socket FD: 5)
+[2026-11-09 22:12:11.926] [INFO ] [CORE    ] Signal 15 captured. Initiating graceful shutdown...
+[2026-11-09 22:12:11.926] [INFO ] [SERVER  ] HTTP Daemon loop finished. Total uptime: 0s
+[2026-11-09 22:12:57.858] [INFO ] [CORE    ] ================================================================================
+[2026-11-09 22:12:57.858] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
+[2026-11-09 22:12:57.858] [INFO ] [CORE    ] Logging output initialized to: sodium.log
+[2026-11-09 22:12:57.858] [INFO ] [CORE    ] Sodium engine starting up (PID: 15318)
+[2026-11-09 22:12:57.858] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --serve --port 8089
+[2026-11-09 22:12:57.858] [INFO ] [CONFIG  ] Action logging destination: sodium.log
+[2026-11-09 22:12:57.858] [INFO ] [CORE    ] Mode selected: Web Server Daemon (Host: 0.0.0.0, Port: 8089)
+[2026-11-09 22:12:57.858] [INFO ] [SERVER  ] HTTP Daemon started on http://0.0.0.0:8089 (Socket FD: 5)
+[2026-11-09 22:13:14.725] [INFO ] [CORE    ] ================================================================================
+[2026-11-09 22:13:14.725] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
+[2026-11-09 22:13:14.725] [INFO ] [CORE    ] Logging output initialized to: sodium.log
+[2026-11-09 22:13:14.725] [INFO ] [CORE    ] Sodium engine starting up (PID: 15328)
+[2026-11-09 22:13:14.725] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --serve --port 8089
+[2026-11-09 22:13:14.725] [INFO ] [CONFIG  ] Action logging destination: sodium.log
+[2026-11-09 22:13:14.725] [INFO ] [CORE    ] Mode selected: Web Server Daemon (Host: 0.0.0.0, Port: 8089)
+[2026-11-09 22:13:14.725] [INFO ] [SERVER  ] HTTP Daemon started on http://0.0.0.0:8089 (Socket FD: 5)
+[2026-11-09 22:14:37.434] [INFO ] [CORE    ] Signal 2 captured. Initiating graceful shutdown...
+[2026-11-09 22:14:37.434] [INFO ] [SERVER  ] HTTP Daemon loop finished. Total uptime: 751s
+[2026-11-09 22:15:27.702] [INFO ] [CORE    ] ================================================================================
+[2026-11-09 22:15:27.702] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
+[2026-11-09 22:15:27.702] [INFO ] [CORE    ] Logging output initialized to: sodium.log
+[2026-11-09 22:15:27.702] [INFO ] [CORE    ] Sodium engine starting up (PID: 15444)
+[2026-11-09 22:15:27.702] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --serve --port 8080
+[2026-11-09 22:15:27.703] [INFO ] [CONFIG  ] Action logging destination: sodium.log
+[2026-11-09 22:15:27.703] [INFO ] [CORE    ] Mode selected: Web Server Daemon (Host: 0.0.0.0, Port: 8080)
+[2026-11-09 22:15:27.703] [INFO ] [SERVER  ] HTTP Daemon started on http://0.0.0.0:8080 (Socket FD: 4)
+[2026-11-09 22:15:45.914] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:15:45.948] [INFO ] [HTTP    ] Request: GET / from client 127.0.0.1 (FD: 5, Total: 461 bytes, Body: 0 bytes)
+[2026-11-09 22:15:45.948] [DEBUG] [HTTP    ] Sent 200 OK (Content-Length: 18567)
+[2026-11-09 22:16:38.020] [DEBUG] [SERVER  ] Connection accepted (FD: 5, IP: 127.0.0.1)
+[2026-11-09 22:16:38.021] [INFO ] [HTTP    ] Request: POST /api/v1/nlp-solve from client 127.0.0.1 (FD: 5, Total: 917 bytes, Body: 418 bytes)
+[2026-11-09 22:16:38.021] [INFO ] [NLP     ] POST /api/v1/nlp-solve: Engine [non-llm], Prompt length: 386 bytes
+[2026-11-09 22:16:38.335] [INFO ] [NLP     ] Python NLP router returned 802 bytes (Exit: 0)
+[2026-11-09 22:16:38.335] [DEBUG] [HTTP    ] Sent 200 OK (Content-Length: 1303)
+[2026-11-09 22:44:23.269] [INFO ] [CORE    ] Signal 2 captured. Initiating graceful shutdown...
+[2026-11-09 22:44:23.271] [INFO ] [SERVER  ] HTTP Daemon loop finished. Total uptime: 1736s
