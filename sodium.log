@@ -1,0 +1,33 @@
+[2026-11-09 21:54:01.491] [INFO ] [CORE    ] ================================================================================
+[2026-11-09 21:54:01.492] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
+[2026-11-09 21:54:01.492] [INFO ] [CORE    ] Logging output initialized to: sodium.log
+[2026-11-09 21:54:01.492] [INFO ] [CORE    ] Sodium engine starting up (PID: 14540)
+[2026-11-09 21:54:01.492] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --help
+[2026-11-09 21:54:01.492] [INFO ] [CONFIG  ] Action logging destination: sodium.log
+[2026-11-09 21:54:31.832] [INFO ] [CORE    ] ================================================================================
+[2026-11-09 21:54:31.832] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
+[2026-11-09 21:54:31.832] [INFO ] [CORE    ] Logging output initialized to: sodium.log
+[2026-11-09 21:54:31.832] [INFO ] [CORE    ] Sodium engine starting up (PID: 14561)
+[2026-11-09 21:54:31.832] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --dimacs p cnf 2 2
+1 2 0
+-1 2 0 --benchmark
+[2026-11-09 21:54:31.832] [INFO ] [CONFIG  ] Action logging destination: sodium.log
+[2026-11-09 21:54:31.832] [INFO ] [CORE    ] Mode selected: Local CLI Execution
+[2026-11-09 21:54:31.832] [INFO ] [CLI     ] Ingesting inline DIMACS formula (22 bytes)
+[2026-11-09 21:54:31.832] [INFO ] [SOLVER  ] Invoking CDCL solver engine (DIMACS format)
+[2026-11-09 21:54:31.832] [INFO ] [API     ] sodium_api_solve_dimacs: Ingesting DIMACS formula (22 bytes)
+[2026-11-09 21:54:31.832] [INFO ] [SOLVER  ] DIMACS solved: SATISFIABLE (Status: 10, Vars: 2, Clauses: 2, Time: 0.0170 ms)
+[2026-11-09 21:54:31.832] [INFO ] [SOLVER  ] Solve finished in 0.0350 ms. Status code: 10 (SATISFIABLE)
+[2026-11-09 21:54:31.832] [INFO ] [CORE    ] Sodium execution terminating with exit code: 0
+[2026-11-09 21:54:59.056] [INFO ] [CORE    ] ================================================================================
+[2026-11-09 21:54:59.057] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
+[2026-11-09 21:54:59.057] [INFO ] [CORE    ] Logging output initialized to: sodium.log
+[2026-11-09 21:54:59.057] [INFO ] [CORE    ] Sodium engine starting up (PID: 14572)
+[2026-11-09 21:54:59.057] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --nlp PrimaryServer and StandbyServer cannot both be active. Either PrimaryServer or StandbyServer must be active. If MaintenanceMode is active then PrimaryServer is offline. MaintenanceMode is active. --non-llm --benchmark
+[2026-11-09 21:54:59.057] [INFO ] [CONFIG  ] Action logging destination: sodium.log
+[2026-11-09 21:54:59.057] [INFO ] [CORE    ] Mode selected: Local CLI Execution
+[2026-11-09 21:54:59.057] [INFO ] [NLP     ] Routing natural language prompt via [Classical Non-LLM]: 'PrimaryServer and StandbyServer cannot both be active. Either PrimaryServer or StandbyServer must be...'
+[2026-11-09 21:54:59.322] [INFO ] [NLP     ] NLP router returned 584 bytes of JSON formula
+[2026-11-09 21:54:59.322] [INFO ] [SOLVER  ] Invoking CDCL solver engine (JSON format)
+[2026-11-09 21:54:59.322] [INFO ] [SOLVER  ] Solve finished in 0.0210 ms. Status code: 10 (SATISFIABLE)
+[2026-11-09 21:54:59.322] [INFO ] [CORE    ] Sodium execution terminating with exit code: 0

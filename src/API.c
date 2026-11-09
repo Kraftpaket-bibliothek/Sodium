@@ -1,4 +1,5 @@
 #include "API.h"
+#include "Common/logger.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -154,6 +155,7 @@ int sodium_api_solve_dimacs(const char* dimacs_str, char** out_json_response) {
     *out_json_response = NULL;
 
     if (!dimacs_str || strlen(dimacs_str) == 0) {
+        LOG_WARN("API", "sodium_api_solve_dimacs received empty/null DIMACS input");
         ApiStringBuilder err_sb;
         api_sb_init(&err_sb, 128);
         api_sb_append_str(&err_sb,
@@ -166,6 +168,7 @@ int sodium_api_solve_dimacs(const char* dimacs_str, char** out_json_response) {
         return SODIUM_STATUS_UNKNOWN;
     }
 
+    LOG_INFO("API", "sodium_api_solve_dimacs: Ingesting DIMACS formula (%zu bytes)", strlen(dimacs_str));
     SodiumSolver* solver = sodium_solver_create();
     int max_var = 0;
 
@@ -181,6 +184,9 @@ int sodium_api_solve_dimacs(const char* dimacs_str, char** out_json_response) {
     int final_var_count = sodium_solver_get_variable_count(solver);
     if (final_var_count > max_var) max_var = final_var_count;
     int clause_count = sodium_solver_get_clause_count(solver);
+
+    LOG_INFO("SOLVER", "DIMACS solved: %s (Status: %d, Vars: %d, Clauses: %d, Time: %.4f ms)",
+             status_str, status_code, max_var, clause_count, t_elapsed_ms);
 
     ApiStringBuilder sb;
     api_sb_init(&sb, 1024);
@@ -257,6 +263,7 @@ int sodium_api_verify_formula(
 ) {
     if (!formula_text || !out_status) return -1;
 
+    LOG_INFO("API", "sodium_api_verify_formula invoked (Formula length: %zu bytes)", strlen(formula_text));
     double t_start = get_time_ms();
     SodiumSolver* solver = sodium_solver_create();
 
@@ -272,6 +279,9 @@ int sodium_api_verify_formula(
     int final_var_count = sodium_solver_get_variable_count(solver);
     if (final_var_count > max_var) max_var = final_var_count;
     if (out_max_var) *out_max_var = max_var;
+
+    LOG_INFO("SOLVER", "sodium_api_verify_formula completed: Status: %d, Vars: %d, Time: %.4f ms",
+             status, max_var, elapsed_ms);
 
     if (out_model) {
         if (status == SODIUM_STATUS_SATISFIABLE && max_var > 0) {

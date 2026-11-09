@@ -41,6 +41,7 @@ FRAMEWORKS  = \
 # ---- Core C Engine Sources (shared between all targets) ----
 CORE_SRCS   = \
     src/sodium_orchestrator.c \
+    src/Common/logger.c \
     src/API.c \
     src/SAT/sat_api.c \
     src/SAT/CDCL/CDCL.c \

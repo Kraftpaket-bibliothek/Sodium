@@ -1,4 +1,5 @@
 #include "API.h"
+#include "Common/logger.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +36,7 @@ static int g_server_fd = -1;
 static time_t g_start_time = 0;
 
 static void handle_signal(int sig) {
-    (void)sig;
+    LOG_INFO("CORE", "Signal %d captured. Initiating graceful shutdown...", sig);
     g_running = false;
     if (g_server_fd >= 0) {
 #if defined(_WIN32)
@@ -103,11 +104,9 @@ static const char* const EMBEDDED_INDEX_HTML =
 "    .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--card-border); padding-bottom: 12px; }\n"
 "    .tab-btn { background: transparent; border: none; color: var(--text-muted); font-size: 14px; font-weight: 600; padding: 6px 14px; border-radius: 6px; cursor: pointer; transition: 0.2s; }\n"
 "    .tab-btn.active { background: var(--purple-main); color: #FFF; }\n"
-"    .editor-wrap { display: flex; flex-direction: column; gap: 8px; flex: 1; }\n"
-"    textarea { width: 100%; height: 260px; background: var(--code-bg); border: 1px solid var(--card-border); border-radius: 8px; color: #E0E0E0; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; padding: 12px; resize: vertical; outline: none; }\n"
+"    .editor-wrap { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 280px; }\n"
+"    textarea { width: 100%; height: 280px; background: var(--code-bg); border: 1px solid var(--card-border); border-radius: 8px; color: #E0E0E0; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; padding: 12px; resize: vertical; outline: none; }\n"
 "    textarea:focus { border-color: var(--purple-main); box-shadow: 0 0 0 2px rgba(138, 63, 252, 0.2); }\n"
-"    .presets { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }\n"
-"    select { background: var(--code-bg); color: #FFF; border: 1px solid var(--card-border); padding: 6px 10px; border-radius: 6px; outline: none; }\n"
 "    .btn-solve { background: linear-gradient(135deg, var(--purple-main), var(--purple-dark)); color: #FFF; border: none; border-radius: 8px; padding: 12px 20px; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 16px rgba(138, 63, 252, 0.3); transition: 0.2s; }\n"
 "    .btn-solve:hover { opacity: 0.95; transform: translateY(-1px); }\n"
 "    .metrics-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }\n"
@@ -121,6 +120,12 @@ static const char* const EMBEDDED_INDEX_HTML =
 "    .pill-true { background: rgba(37, 162, 68, 0.2); color: #42BE65; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; }\n"
 "    .pill-false { background: rgba(218, 30, 40, 0.2); color: #FA4D56; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; }\n"
 "    .btn-nonllm { background: #58169C !important; color: #FFF !important; border: 1px solid var(--purple-light) !important; }\n"
+"    .rule-row { display: flex; gap: 8px; align-items: center; }\n"
+"    .rule-label { font-size: 11px; color: var(--text-muted); width: 48px; flex-shrink: 0; font-weight: 600; }\n"
+"    .rule-input { flex: 1; background: #161324; border: 1px solid var(--card-border); color: #FFF; padding: 8px 12px; border-radius: 6px; font-size: 13px; outline: none; transition: 0.2s; }\n"
+"    .rule-input:focus { border-color: var(--purple-light); box-shadow: 0 0 0 2px rgba(165, 110, 255, 0.2); }\n"
+"    .rule-del-btn { background: transparent; border: none; color: #FA4D56; cursor: pointer; font-size: 16px; padding: 0 6px; line-height: 1; }\n"
+"    .rule-del-btn:hover { color: #FF8389; }\n"
 "  </style>\n"
 "</head>\n"
 "<body>\n"
@@ -132,11 +137,11 @@ static const char* const EMBEDDED_INDEX_HTML =
 "        You have toggled to Sodium's offline, deterministic <strong>Non-LLM Rule &amp; Math Compiler</strong>.\n"
 "      </p>\n"
 "      <div style=\"background:var(--code-bg);border-left:3px solid var(--purple-main);padding:12px;border-radius:6px;font-size:13px;line-height:1.6;color:#C9C5D6;\">\n"
-"        <strong style=\"color:#FFF;\">Important Writing Guidelines:</strong><br/>\n"
-"        Please write your specifications in <strong>proper English</strong> or <strong>mathematical equations</strong>. Each rule must be <strong>nuanced</strong> and <strong>well-separated</strong> using periods (.) or semicolons (;).<br/><br/>\n"
+"        <strong style=\"color:#FFF;\">Multi-Line Rule Guidelines:</strong><br/>\n"
+"        Enter each distinct requirement or mathematical constraint into its <strong>own separate line</strong> below to avoid run-on sentences.<br/><br/>\n"
 "        <strong style=\"color:#FFF;\">Supported Formats:</strong><br/>\n"
 "        • Implication: <em>If Service A is active then Service B must be online.</em><br/>\n"
-"        • Exclusion: <em>Service A and Service B cannot be active together.</em><br/>\n"
+"        • Exclusion: <em>Service A and Service B cannot both be active.</em><br/>\n"
 "        • Equivalence: <em>Service A is equivalent to Service B.</em><br/>\n"
 "        • Equations: <em>x + y &lt;= 10; Count &gt;= 2; A -&gt; B.</em>\n"
 "      </div>\n"
@@ -157,24 +162,22 @@ static const char* const EMBEDDED_INDEX_HTML =
 "    <div class=\"grid\">\n"
 "      <div class=\"card\">\n"
 "        <div class=\"tabs\">\n"
-"          <button class=\"tab-btn active\" onclick=\"setMode('dimacs')\">DIMACS CNF</button>\n"
-"          <button class=\"tab-btn\" onclick=\"setMode('json')\">Mode 1 JSON</button>\n"
-"          <button class=\"tab-btn\" onclick=\"setMode('nlp')\">Natural Language (NLP)</button>\n"
+"          <button id=\"tab-nlp\" class=\"tab-btn active\" onclick=\"setMode('nlp')\">Natural Language (NLP)</button>\n"
+"          <button id=\"tab-dimacs\" class=\"tab-btn\" onclick=\"setMode('dimacs')\">DIMACS CNF</button>\n"
 "        </div>\n"
-"        <div id=\"nlp-engine-controls\" style=\"display:none;align-items:center;justify-content:space-between;padding:4px 0;\">\n"
+"        <div id=\"nlp-engine-controls\" style=\"display:flex;align-items:center;justify-content:space-between;padding:4px 0;\">\n"
 "          <span style=\"font-size:12px;color:var(--text-muted);\">NLP Engine:</span>\n"
 "          <button id=\"engine-toggle-btn\" class=\"tab-btn\" style=\"font-size:12px;padding:4px 12px;background:var(--code-bg);border:1px solid var(--card-border);\" onclick=\"toggleNLPEngine()\">LLM (AI)</button>\n"
 "        </div>\n"
-"        <div class=\"presets\">\n"
-"          <label>Presets:</label>\n"
-"          <select id=\"preset-select\" onchange=\"loadPreset()\">\n"
-"            <option value=\"nqueens4\">N-Queens (N=4) [SAT]</option>\n"
-"            <option value=\"php32\">Pigeonhole (3 items, 2 holes) [UNSAT]</option>\n"
-"            <option value=\"mutex\">Mutex Exclusion [SAT]</option>\n"
-"          </select>\n"
-"        </div>\n"
 "        <div class=\"editor-wrap\">\n"
-"          <textarea id=\"code-editor\" spellcheck=\"false\"></textarea>\n"
+"          <textarea id=\"code-editor\" spellcheck=\"false\" placeholder=\"Enter your natural language requirements or policy rules here...\"></textarea>\n"
+"          <div id=\"nonllm-rule-container\" style=\"display:none; flex-direction:column; gap:10px; height:280px; overflow-y:auto; background:var(--code-bg); padding:12px; border:1px solid var(--card-border); border-radius:8px;\">\n"
+"            <div style=\"font-size:12px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:6px;\">\n"
+"              <span>Separate Rules (One per line to prevent continuous run-on):</span>\n"
+"              <button type=\"button\" class=\"tab-btn\" style=\"padding:3px 10px; font-size:11px; background:var(--purple-dark); color:#FFF; cursor:pointer;\" onclick=\"addRuleRow('')\">+ Add Rule</button>\n"
+"            </div>\n"
+"            <div id=\"rule-rows\" style=\"display:flex; flex-direction:column; gap:8px;\"></div>\n"
+"          </div>\n"
 "        </div>\n"
 "        <button class=\"btn-solve\" onclick=\"triggerSolve()\">Solve with Sodium CDCL</button>\n"
 "      </div>\n"
@@ -195,85 +198,158 @@ static const char* const EMBEDDED_INDEX_HTML =
 "    </div>\n"
 "  </div>\n"
 "  <script>\n"
-"    let currentMode = 'dimacs';\n"
+"    let currentMode = 'nlp';\n"
 "    let nlpEngine = 'llm';\n"
+"\n"
 "    function toggleNLPEngine() {\n"
 "      const btn = document.getElementById('engine-toggle-btn');\n"
+"      const editor = document.getElementById('code-editor');\n"
+"      const nonllmBox = document.getElementById('nonllm-rule-container');\n"
 "      if (nlpEngine === 'llm') {\n"
 "        nlpEngine = 'non-llm';\n"
 "        btn.innerText = 'Non-LLM (Classical NLP)';\n"
 "        btn.classList.add('btn-nonllm');\n"
 "        document.getElementById('nlp-guidance-modal').style.display = 'flex';\n"
+"        editor.style.display = 'none';\n"
+"        nonllmBox.style.display = 'flex';\n"
+"        initRuleRowsFromText(editor.value);\n"
 "      } else {\n"
 "        nlpEngine = 'llm';\n"
 "        btn.innerText = 'LLM (AI)';\n"
 "        btn.classList.remove('btn-nonllm');\n"
+"        editor.value = getNonLLMText();\n"
+"        nonllmBox.style.display = 'none';\n"
+"        editor.style.display = 'block';\n"
 "      }\n"
 "    }\n"
+"\n"
 "    function closeNLPModal() {\n"
 "      document.getElementById('nlp-guidance-modal').style.display = 'none';\n"
 "    }\n"
-"    const PRESETS = {\n"
-"      nqueens4: \"c N-Queens 4x4 instance\\np cnf 16 84\\n1 2 3 4 0\\n5 6 7 8 0\\n9 10 11 12 0\\n13 14 15 16 0\\n-1 -2 0\\n-1 -3 0\\n-1 -4 0\\n-2 -3 0\\n-2 -4 0\\n-3 -4 0\\n-5 -6 0\\n-5 -7 0\\n-5 -8 0\\n-6 -7 0\\n-6 -8 0\\n-7 -8 0\\n-9 -10 0\\n-9 -11 0\\n-9 -12 0\\n-10 -11 0\\n-10 -12 0\\n-11 -12 0\\n-13 -14 0\\n-13 -15 0\\n-13 -16 0\\n-14 -15 0\\n-14 -16 0\\n-15 -16 0\\n-1 -5 0\\n-1 -9 0\\n-1 -13 0\\n-5 -9 0\\n-5 -13 0\\n-9 -13 0\\n-2 -6 0\\n-2 -10 0\\n-2 -14 0\\n-6 -10 0\\n-6 -14 0\\n-10 -14 0\\n-3 -7 0\\n-3 -11 0\\n-3 -15 0\\n-7 -11 0\\n-7 -15 0\\n-11 -15 0\\n-4 -8 0\\n-4 -12 0\\n-4 -16 0\\n-8 -12 0\\n-8 -16 0\\n-12 -16 0\\n-1 -6 0\\n-6 -11 0\\n-11 -16 0\\n-1 -11 0\\n-6 -16 0\\n-1 -16 0\\n-2 -7 0\\n-7 -12 0\\n-2 -12 0\\n-5 -10 0\\n-10 -15 0\\n-5 -15 0\\n-9 -14 0\\n-3 -8 0\\n-4 -7 0\\n-7 -10 0\\n-10 -13 0\\n-4 -10 0\\n-7 -13 0\\n-4 -13 0\\n-3 -6 0\\n-6 -9 0\\n-3 -9 0\\n-8 -11 0\\n-11 -14 0\\n-8 -14 0\\n-2 -5 0\\n-12 -15 0\",\n"
-"      php32: \"c Pigeonhole Principle (3 pigeons into 2 holes) [UNSAT]\\np cnf 6 9\\n1 2 0\\n3 4 0\\n5 6 0\\n-1 -3 0\\n-1 -5 0\\n-3 -5 0\\n-2 -4 0\\n-2 -6 0\\n-4 -6 0\",\n"
-"      mutex: \"c Mutual Exclusion Policy\\np cnf 3 4\\n1 2 0\\n-1 -2 0\\n-1 3 0\\n1 0\"\n"
-"    };\n"
+"\n"
+"    function initRuleRowsFromText(text) {\n"
+"      const container = document.getElementById('rule-rows');\n"
+"      container.innerHTML = '';\n"
+"      let lines = text ? text.split(/[.;\\n]+/).map(s => s.trim()).filter(s => s.length > 0) : [];\n"
+"      if (lines.length === 0) {\n"
+"        lines = [\n"
+"          'PrimaryServer and StandbyServer cannot both be active',\n"
+"          'Either PrimaryServer or StandbyServer must be active',\n"
+"          'If MaintenanceMode is active then PrimaryServer is offline',\n"
+"          'MaintenanceMode is active'\n"
+"        ];\n"
+"      }\n"
+"      lines.forEach(line => addRuleRow(line));\n"
+"    }\n"
+"\n"
+"    function addRuleRow(val) {\n"
+"      const container = document.getElementById('rule-rows');\n"
+"      const count = container.children.length + 1;\n"
+"      const row = document.createElement('div');\n"
+"      row.className = 'rule-row';\n"
+"      const cleanVal = (val || '').replace(/\"/g, '&quot;');\n"
+"      row.innerHTML = `\n"
+"        <span class=\"rule-label\">Rule ${count}:</span>\n"
+"        <input type=\"text\" class=\"rule-input\" placeholder=\"e.g. PrimaryServer and StandbyServer cannot both be active\" value=\"${cleanVal}\" onkeydown=\"handleRuleKeyDown(event, this)\" />\n"
+"        <button type=\"button\" class=\"rule-del-btn\" title=\"Delete rule\" onclick=\"removeRuleRow(this)\">✕</button>\n"
+"      `;\n"
+"      container.appendChild(row);\n"
+"      const inp = row.querySelector('input');\n"
+"      if (!val) inp.focus();\n"
+"    }\n"
+"\n"
+"    function removeRuleRow(btn) {\n"
+"      const container = document.getElementById('rule-rows');\n"
+"      if (container.children.length <= 1) return;\n"
+"      btn.closest('.rule-row').remove();\n"
+"      container.querySelectorAll('.rule-row').forEach((r, idx) => {\n"
+"        r.querySelector('.rule-label').innerText = `Rule ${idx + 1}:`;\n"
+"      });\n"
+"    }\n"
+"\n"
+"    function handleRuleKeyDown(e, input) {\n"
+"      if (e.key === 'Enter') {\n"
+"        e.preventDefault();\n"
+"        addRuleRow('');\n"
+"      }\n"
+"    }\n"
+"\n"
+"    function getNonLLMText() {\n"
+"      const inputs = document.querySelectorAll('.rule-input');\n"
+"      const rules = [];\n"
+"      inputs.forEach(inp => {\n"
+"        const t = inp.value.trim();\n"
+"        if (t) {\n"
+"          rules.push(t.endsWith('.') || t.endsWith(';') ? t : t + '.');\n"
+"        }\n"
+"      });\n"
+"      return rules.join(' ');\n"
+"    }\n"
+"\n"
 "    function setMode(mode) {\n"
 "      currentMode = mode;\n"
-"      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));\n"
-"      event.target.classList.add('active');\n"
+"      document.getElementById('tab-nlp').classList.toggle('active', mode === 'nlp');\n"
+"      document.getElementById('tab-dimacs').classList.toggle('active', mode === 'dimacs');\n"
 "      const nlpControls = document.getElementById('nlp-engine-controls');\n"
-"      if(mode === 'dimacs') {\n"
-"        if(nlpControls) nlpControls.style.display = 'none';\n"
-"        loadPreset();\n"
-"      } else if(mode === 'json') {\n"
-"        if(nlpControls) nlpControls.style.display = 'none';\n"
-"        document.getElementById('code-editor').value = JSON.stringify({\n"
-"          format: 'cnf',\n"
-"          solver_config: { name: 'sodium-cdcl', timeout_seconds: 10, verbose: false },\n"
-"          metadata: { description: 'Server redundancy policy', variable_mapping: { '1': 'Server_A', '2': 'Server_B' } },\n"
-"          clauses: [[1, 2, 0], [-1, -2, 0]],\n"
-"          assumptions: [1]\n"
-"        }, null, 2);\n"
-"      } else if(mode === 'nlp') {\n"
-"        if(nlpControls) nlpControls.style.display = 'flex';\n"
-"        document.getElementById('code-editor').value = 'Server A and Server B cannot be active together. Server A is currently active. Always ensure at least one server is online.';\n"
+"      const editor = document.getElementById('code-editor');\n"
+"      const nonllmBox = document.getElementById('nonllm-rule-container');\n"
+"      if (mode === 'nlp') {\n"
+"        if (nlpControls) nlpControls.style.display = 'flex';\n"
+"        if (nlpEngine === 'non-llm') {\n"
+"          editor.style.display = 'none';\n"
+"          nonllmBox.style.display = 'flex';\n"
+"          if (document.getElementById('rule-rows').children.length === 0) {\n"
+"            initRuleRowsFromText(editor.value);\n"
+"          }\n"
+"        } else {\n"
+"          editor.style.display = 'block';\n"
+"          nonllmBox.style.display = 'none';\n"
+"          if (!editor.value) {\n"
+"            editor.value = 'PrimaryServer and StandbyServer cannot both be active. Either PrimaryServer or StandbyServer must be active. If MaintenanceMode is active then PrimaryServer is offline. MaintenanceMode is active.';\n"
+"          }\n"
+"        }\n"
+"      } else if (mode === 'dimacs') {\n"
+"        if (nlpControls) nlpControls.style.display = 'none';\n"
+"        nonllmBox.style.display = 'none';\n"
+"        editor.style.display = 'block';\n"
+"        if (!editor.value || editor.value.startsWith('PrimaryServer')) {\n"
+"          editor.value = 'c High-Availability Dual-Server Split-Brain Prevention Policy\\np cnf 3 4\\n-1 -2 0\\n1 2 0\\n-3 -1 0\\n3 0';\n"
+"        }\n"
 "      }\n"
 "    }\n"
-"    function loadPreset() {\n"
-"      const key = document.getElementById('preset-select').value;\n"
-"      if(PRESETS[key]) document.getElementById('code-editor').value = PRESETS[key];\n"
-"    }\n"
+"\n"
 "    async function triggerSolve() {\n"
-"      const text = document.getElementById('code-editor').value;\n"
+"      let text = '';\n"
+"      if (currentMode === 'nlp' && nlpEngine === 'non-llm') {\n"
+"        text = getNonLLMText();\n"
+"      } else {\n"
+"        text = document.getElementById('code-editor').value;\n"
+"      }\n"
+"      if (!text.trim()) {\n"
+"        alert('Please enter a formula or specification to solve.');\n"
+"        return;\n"
+"      }\n"
 "      const badge = document.getElementById('global-badge');\n"
 "      badge.className = 'badge-status badge-ready'; badge.innerText = 'SOLVING...';\n"
-"      let endpoint = '/api/v1/dimacs';\n"
-"      let body = text;\n"
-"      let headers = { 'Content-Type': 'text/plain' };\n"
-"      if(currentMode === 'json') {\n"
-"        endpoint = '/api/v1/solve';\n"
-"        headers['Content-Type'] = 'application/json';\n"
-"      } else if(currentMode === 'nlp') {\n"
-"        endpoint = '/api/v1/nlp-solve';\n"
-"        headers['Content-Type'] = 'application/json';\n"
-"        body = JSON.stringify({ prompt: text, engine: nlpEngine });\n"
-"      }\n"
+"      let endpoint = (currentMode === 'nlp') ? '/api/v1/nlp-solve' : '/api/v1/dimacs';\n"
+"      let body = (currentMode === 'nlp') ? JSON.stringify({ prompt: text, engine: nlpEngine }) : text;\n"
+"      let headers = { 'Content-Type': (currentMode === 'nlp') ? 'application/json' : 'text/plain' };\n"
 "      try {\n"
 "        const res = await fetch(endpoint, { method: 'POST', headers, body });\n"
 "        const data = await res.json();\n"
 "        renderResults(data);\n"
-"      } catch(err) {\n"
+"      } catch (err) {\n"
 "        badge.className = 'badge-status badge-unsat'; badge.innerText = 'ERROR';\n"
 "        alert('Error connecting to Sodium solver: ' + err);\n"
 "      }\n"
 "    }\n"
+"\n"
 "    function renderResults(data) {\n"
 "      const resp = data.response || {};\n"
 "      const badge = document.getElementById('global-badge');\n"
 "      const status = resp.status || 'UNKNOWN';\n"
-"      if(status === 'SATISFIABLE') { badge.className = 'badge-status badge-sat'; badge.innerText = 'SATISFIABLE'; }\n"
-"      else if(status === 'UNSATISFIABLE') { badge.className = 'badge-status badge-unsat'; badge.innerText = 'UNSATISFIABLE'; }\n"
+"      if (status === 'SATISFIABLE') { badge.className = 'badge-status badge-sat'; badge.innerText = 'SATISFIABLE'; }\n"
+"      else if (status === 'UNSATISFIABLE') { badge.className = 'badge-status badge-unsat'; badge.innerText = 'UNSATISFIABLE'; }\n"
 "      else { badge.className = 'badge-status badge-ready'; badge.innerText = status; }\n"
 "      const stats = resp.statistics || {};\n"
 "      document.getElementById('m-time').innerText = (stats.solve_time_ms ? stats.solve_time_ms.toFixed(3) : '0.00') + ' ms';\n"
@@ -284,26 +360,28 @@ static const char* const EMBEDDED_INDEX_HTML =
 "      tbody.innerHTML = '';\n"
 "      const assign = resp.assignment || {};\n"
 "      const keys = Object.keys(assign);\n"
-"      if(keys.length === 0) {\n"
+"      if (keys.length === 0) {\n"
 "        tbody.innerHTML = `<tr><td colspan=\"3\" style=\"text-align:center;padding:24px;color:var(--text-muted);\">${status === 'UNSATISFIABLE' ? 'Contradiction found. No valid model exists.' : 'No assignments returned.'}</td></tr>`;\n"
 "        return;\n"
 "      }\n"
 "      const vmap = (data.metadata && data.metadata.variable_mapping) || {};\n"
-"      for(const k of keys) {\n"
+"      for (const k of keys) {\n"
 "        const val = assign[k];\n"
 "        const name = vmap[k] || ('Variable #' + k);\n"
 "        const pill = val ? '<span class=\"pill-true\">TRUE</span>' : '<span class=\"pill-false\">FALSE</span>';\n"
 "        tbody.innerHTML += `<tr><td><strong>${k}</strong></td><td>${name}</td><td>${pill}</td></tr>`;\n"
 "      }\n"
 "    }\n"
-"    window.onload = loadPreset;\n"
+"\n"
+"    window.onload = function() {\n"
+"      setMode('nlp');\n"
+"    };\n"
 "  </script>\n"
 "</body>\n"
 "</html>";
 
-
 // ============================================================================
-// SECTION 3: HTTP SERVER ENGINE & REST API
+// SECTION 3: HTTP SERVER ENGINE & REST API HANDLERS
 // ============================================================================
 
 typedef struct {
@@ -345,6 +423,7 @@ static void send_http_response(
         write(client_fd, body, body_len);
     }
 #endif
+    LOG_DEBUG("HTTP", "Sent %d %s (Content-Length: %zu)", status_code, status_text, body_len);
 }
 
 static char* extract_http_body(const char* request, size_t req_len, size_t* out_body_len) {
@@ -389,10 +468,13 @@ static void* handle_client_connection(void* arg) {
 
     buffer[bytes_read] = '\0';
 
-    // Parse HTTP Request Line (e.g., "POST /api/v1/solve HTTP/1.1")
+    // Parse HTTP Request Line (e.g., "POST /api/v1/dimacs HTTP/1.1")
     char method[16] = {0};
     char path[256] = {0};
     sscanf(buffer, "%15s %255s", method, path);
+
+    LOG_INFO("HTTP", "Request: %s %s from client %s (FD: %d, Length: %d bytes)",
+             method, path, ctx->client_ip, client_fd, bytes_read);
 
     // 1. CORS Preflight
     if (strcmp(method, "OPTIONS") == 0) {
@@ -420,15 +502,18 @@ static void* handle_client_connection(void* arg) {
         size_t body_len = 0;
         char* body = extract_http_body(buffer, (size_t)bytes_read, &body_len);
         if (!body) {
+            LOG_WARN("HTTP", "POST /api/v1/solve missing body");
             const char* err = "{\"error\":\"Missing request body\"}\n";
             send_http_response(client_fd, 400, "Bad Request", "application/json", err, strlen(err));
         } else {
+            LOG_INFO("API", "POST /api/v1/solve: Ingesting JSON payload (%zu bytes)", body_len);
             char* out_json = NULL;
             sodium_api_solve_json(body, &out_json);
             if (out_json) {
                 send_http_response(client_fd, 200, "OK", "application/json", out_json, strlen(out_json));
                 sodium_api_free_string(out_json);
             } else {
+                LOG_ERROR("API", "POST /api/v1/solve solver execution failed");
                 const char* err = "{\"error\":\"Solver execution error\"}\n";
                 send_http_response(client_fd, 500, "Internal Server Error", "application/json", err, strlen(err));
             }
@@ -440,15 +525,18 @@ static void* handle_client_connection(void* arg) {
         size_t body_len = 0;
         char* body = extract_http_body(buffer, (size_t)bytes_read, &body_len);
         if (!body) {
+            LOG_WARN("HTTP", "POST /api/v1/dimacs missing formula body");
             const char* err = "{\"error\":\"Missing DIMACS formula body\"}\n";
             send_http_response(client_fd, 400, "Bad Request", "application/json", err, strlen(err));
         } else {
+            LOG_INFO("API", "POST /api/v1/dimacs: Ingesting formula (%zu bytes)", body_len);
             char* out_json = NULL;
             sodium_api_solve_dimacs(body, &out_json);
             if (out_json) {
                 send_http_response(client_fd, 200, "OK", "application/json", out_json, strlen(out_json));
                 sodium_api_free_string(out_json);
             } else {
+                LOG_ERROR("API", "POST /api/v1/dimacs solver execution error");
                 const char* err = "{\"error\":\"DIMACS solver execution error\"}\n";
                 send_http_response(client_fd, 500, "Internal Server Error", "application/json", err, strlen(err));
             }
@@ -460,6 +548,7 @@ static void* handle_client_connection(void* arg) {
         size_t body_len = 0;
         char* body = extract_http_body(buffer, (size_t)bytes_read, &body_len);
         if (!body) {
+            LOG_WARN("HTTP", "POST /api/v1/nlp-solve missing NLP prompt body");
             const char* err = "{\"error\":\"Missing NLP prompt body\"}\n";
             send_http_response(client_fd, 400, "Bad Request", "application/json", err, strlen(err));
         } else {
@@ -487,6 +576,9 @@ static void* handle_client_connection(void* arg) {
 
             // Pipe prompt into Python llm_router.py
             bool is_non_llm = (strstr(body, "non-llm") != NULL);
+            LOG_INFO("NLP", "POST /api/v1/nlp-solve: Engine [%s], Prompt: %.100s...",
+                     is_non_llm ? "non-llm" : "llm", extracted_prompt);
+
             const char* py_bin = (access(".venv/bin/python3", X_OK) == 0) ? ".venv/bin/python3" : "python3";
             char cmd[4096];
             snprintf(cmd, sizeof(cmd), "%s src/NLP/llm_router.py %s --text \"%s\" 2>/dev/null",
@@ -494,6 +586,7 @@ static void* handle_client_connection(void* arg) {
 
             FILE* fp = popen(cmd, "r");
             if (!fp) {
+                LOG_ERROR("NLP", "Failed to invoke Python NLP router command");
                 const char* err = "{\"error\":\"Failed to invoke Python NLP router\"}\n";
                 send_http_response(client_fd, 500, "Internal Error", "application/json", err, strlen(err));
             } else {
@@ -503,6 +596,7 @@ static void* handle_client_connection(void* arg) {
                 pclose(fp);
 
                 if (nread > 0) {
+                    LOG_INFO("NLP", "Python NLP router generated %zu bytes of CNF JSON", nread);
                     char* out_json = NULL;
                     sodium_api_solve_json(nlp_json, &out_json);
                     if (out_json) {
@@ -512,6 +606,7 @@ static void* handle_client_connection(void* arg) {
                         send_http_response(client_fd, 200, "OK", "application/json", nlp_json, strlen(nlp_json));
                     }
                 } else {
+                    LOG_WARN("NLP", "Python NLP router returned 0 bytes");
                     const char* err = "{\"error\":\"Python NLP router returned no output\"}\n";
                     send_http_response(client_fd, 502, "Bad Gateway", "application/json", err, strlen(err));
                 }
@@ -521,6 +616,7 @@ static void* handle_client_connection(void* arg) {
     }
     // 7. Not Found
     else {
+        LOG_WARN("HTTP", "Endpoint not found: %s %s", method, path);
         const char* not_found = "{\"error\":\"Endpoint not found\"}\n";
         send_http_response(client_fd, 404, "Not Found", "application/json", not_found, strlen(not_found));
     }
@@ -544,6 +640,7 @@ static void run_server_daemon(const char* host, int port) {
 
     g_server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (g_server_fd < 0) {
+        LOG_ERROR("SERVER", "Failed to create server socket (%s)", strerror(errno));
         fprintf(stderr, "Error: Failed to create socket (%s)\n", strerror(errno));
         return;
     }
@@ -567,6 +664,7 @@ static void run_server_daemon(const char* host, int port) {
     }
 
     if (bind(g_server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        LOG_ERROR("SERVER", "Failed to bind to %s:%d (%s)", host, port, strerror(errno));
         fprintf(stderr, "Error: Failed to bind to %s:%d (%s)\n", host, port, strerror(errno));
 #if defined(_WIN32)
         closesocket(g_server_fd);
@@ -577,6 +675,7 @@ static void run_server_daemon(const char* host, int port) {
     }
 
     if (listen(g_server_fd, 64) < 0) {
+        LOG_ERROR("SERVER", "Failed to listen on socket (%s)", strerror(errno));
         fprintf(stderr, "Error: Failed to listen on socket (%s)\n", strerror(errno));
 #if defined(_WIN32)
         closesocket(g_server_fd);
@@ -586,10 +685,12 @@ static void run_server_daemon(const char* host, int port) {
         return;
     }
 
+    LOG_INFO("SERVER", "HTTP Daemon started on http://%s:%d (Socket FD: %d)", host, port, g_server_fd);
     printf("====================================================================\n");
     printf(" Sodium Engine Daemon Running\n");
     printf(" Listening on: http://%s:%d\n", host, port);
     printf(" Serving Web Studio & REST API (Ready for HTTPS Reverse Proxy)\n");
+    printf(" Logging active to: %s\n", logger_get_filepath());
     printf(" Press Ctrl+C to terminate cleanly.\n");
     printf("====================================================================\n\n");
 
@@ -606,6 +707,7 @@ static void run_server_daemon(const char* host, int port) {
         HttpClientContext* ctx = (HttpClientContext*)malloc(sizeof(HttpClientContext));
         ctx->client_fd = client_fd;
         inet_ntop(AF_INET, &client_addr.sin_addr, ctx->client_ip, sizeof(ctx->client_ip));
+        LOG_DEBUG("SERVER", "Connection accepted (FD: %d, IP: %s)", client_fd, ctx->client_ip);
 
 #if defined(_WIN32)
         // Windows single-thread handle
@@ -620,6 +722,7 @@ static void run_server_daemon(const char* host, int port) {
 #endif
     }
 
+    LOG_INFO("SERVER", "HTTP Daemon loop finished. Total uptime: %llds", (long long)(time(NULL) - g_start_time));
     printf("\nShutting down Sodium daemon cleanly.\n");
 #if defined(_WIN32)
     WSACleanup();
@@ -680,6 +783,7 @@ static void print_usage(const char* prog_name) {
     printf("  --non-llm                Use deterministic Classical NLP pipeline instead of LLM\n");
     printf("  -b, --benchmark          Display high-precision microsecond execution metrics\n");
     printf("  -g, --gui                Launch the native C++ Dear ImGui Desktop UI\n");
+    printf("  -l, --log <path>         Specify destination file for action logging (default: sodium.log)\n");
     printf("\nServer & Cloud Deployment (HTTPS Web Serving):\n");
     printf("  -s, --serve              Launch embedded HTTP daemon serving Web UI and REST API\n");
     printf("  -p, --port <number>      Port to listen on (default: 8080)\n");
@@ -698,6 +802,7 @@ int main(int argc, char** argv) {
     const char* json_input = NULL;
     const char* dimacs_input = NULL;
     const char* nlp_prompt = NULL;
+    const char* log_file = "sodium.log";
     bool serve_mode = false;
     bool benchmark_mode = false;
     bool gui_mode = false;
@@ -713,10 +818,32 @@ int main(int argc, char** argv) {
     const char* env_host = getenv("SODIUM_HOST");
     if (env_host) host = env_host;
 
+    // Pre-scan for custom log path
+    for (int i = 1; i < argc; i++) {
+        if ((strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--log") == 0) && i + 1 < argc) {
+            log_file = argv[i + 1];
+            break;
+        }
+    }
+
+    // Initialize application-wide logging
+    logger_init(log_file);
+
+    // Reconstruct CLI invocation string
+    char full_cmd[2048] = {0};
+    for (int i = 0; i < argc; i++) {
+        strncat(full_cmd, argv[i], sizeof(full_cmd) - strlen(full_cmd) - 1);
+        if (i < argc - 1) strncat(full_cmd, " ", sizeof(full_cmd) - strlen(full_cmd) - 1);
+    }
+    LOG_INFO("CORE", "Sodium engine starting up (PID: %d)", (int)getpid());
+    LOG_INFO("CONFIG", "Command-line invocation: %s", full_cmd);
+    LOG_INFO("CONFIG", "Action logging destination: %s", log_file);
+
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
+            logger_shutdown();
             return 0;
         } else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "--serve") == 0) {
             serve_mode = true;
@@ -738,45 +865,57 @@ int main(int argc, char** argv) {
             nlp_prompt = argv[++i];
         } else if (strcmp(argv[i], "--non-llm") == 0) {
             non_llm_mode = true;
+        } else if ((strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--log") == 0) && i + 1 < argc) {
+            i++; // already handled in pre-scan
         }
     }
 
     // 1. Server Mode
     if (serve_mode) {
+        LOG_INFO("CORE", "Mode selected: Web Server Daemon (Host: %s, Port: %d)", host, port);
         run_server_daemon(host, port);
+        logger_shutdown();
         return 0;
     }
 
     // 2. GUI Mode
     if (gui_mode) {
+        LOG_INFO("CORE", "Mode selected: Native Desktop GUI");
         printf("[*] Launching Sodium Native C++ Dear ImGui Desktop Interface...\n");
 #if defined(SODIUM_ENABLE_GUI)
         SodiumUI_Init();
         printf("[*] Desktop UI initialized. Entering main render loop.\n");
         // Desktop window loop runs here when linked with GLFW/SDL
         SodiumUI_Shutdown();
+        logger_shutdown();
         return 0;
 #else
         printf("Note: Native Dear ImGui window requires GLFW/SDL backend compilation.\n");
         printf("To use the visual interface, launch the server daemon:\n");
         printf("    %s --serve --port %d\n", argv[0], port);
         printf("Then open http://localhost:%d in your browser.\n", port);
+        logger_shutdown();
         return 0;
 #endif
     }
 
     // 3. Local CLI Execution
+    LOG_INFO("CORE", "Mode selected: Local CLI Execution");
     char* content_to_free = NULL;
     const char* text_to_solve = NULL;
     bool is_json = false;
 
     if (file_path) {
+        LOG_INFO("CLI", "Loading input formula from file: %s", file_path);
         content_to_free = read_entire_file(file_path);
         if (!content_to_free) {
+            LOG_ERROR("CLI", "Unable to open or read file: %s", file_path);
             fprintf(stderr, "Error: Unable to open file: %s\n", file_path);
+            logger_shutdown();
             return 1;
         }
         text_to_solve = content_to_free;
+        LOG_INFO("CLI", "File read successfully (%zu bytes)", strlen(text_to_solve));
 
         // Auto-detect JSON vs DIMACS by file extension or first non-whitespace
         if (strstr(file_path, ".json") != NULL) {
@@ -787,13 +926,17 @@ int main(int argc, char** argv) {
             if (*p == '{') is_json = true;
         }
     } else if (json_input) {
+        LOG_INFO("CLI", "Ingesting inline JSON formula (%zu bytes)", strlen(json_input));
         text_to_solve = json_input;
         is_json = true;
     } else if (dimacs_input) {
+        LOG_INFO("CLI", "Ingesting inline DIMACS formula (%zu bytes)", strlen(dimacs_input));
         text_to_solve = dimacs_input;
         is_json = false;
     } else if (nlp_prompt) {
         const char* py_bin = (access(".venv/bin/python3", X_OK) == 0) ? ".venv/bin/python3" : "python3";
+        LOG_INFO("NLP", "Routing natural language prompt via [%s]: '%.100s...'",
+                 non_llm_mode ? "Classical Non-LLM" : "Pydantic LLM", nlp_prompt);
         printf("[*] Routing natural language specification to Python %s pipeline...\n",
                non_llm_mode ? "Classical Non-LLM" : "Pydantic LLM");
         char cmd[4096];
@@ -802,7 +945,9 @@ int main(int argc, char** argv) {
 
         FILE* fp = popen(cmd, "r");
         if (!fp) {
+            LOG_ERROR("NLP", "Failed to execute Python subprocess: %s", cmd);
             fprintf(stderr, "Error: Failed to execute src/NLP/llm_router.py\n");
+            logger_shutdown();
             return 1;
         }
         content_to_free = (char*)malloc(32768);
@@ -811,33 +956,42 @@ int main(int argc, char** argv) {
         pclose(fp);
 
         if (nr == 0) {
+            LOG_ERROR("NLP", "Subprocess returned 0 bytes output");
             fprintf(stderr, "Error: No output from Python NLP router.\n");
             free(content_to_free);
+            logger_shutdown();
             return 1;
         }
+        LOG_INFO("NLP", "NLP router returned %zu bytes of JSON formula", nr);
         text_to_solve = content_to_free;
         is_json = true;
     } else {
         // Check if input was piped through stdin
 #if !defined(_WIN32)
         if (!isatty(STDIN_FILENO)) {
+            LOG_INFO("CLI", "Reading formula from stdin pipe");
             content_to_free = read_entire_stdin();
             if (content_to_free && strlen(content_to_free) > 0) {
                 text_to_solve = content_to_free;
                 const char* p = text_to_solve;
                 while (*p && isspace((unsigned char)*p)) p++;
                 if (*p == '{') is_json = true;
+                LOG_INFO("CLI", "Piped stdin read successfully (%zu bytes, format: %s)",
+                         strlen(text_to_solve), is_json ? "JSON" : "DIMACS");
             }
         }
 #endif
     }
 
     if (!text_to_solve) {
+        LOG_WARN("CLI", "No input formula provided via arguments or stdin");
         print_usage(argv[0]);
+        logger_shutdown();
         return 1;
     }
 
     // Solve Problem
+    LOG_INFO("SOLVER", "Invoking CDCL solver engine (%s format)", is_json ? "JSON" : "DIMACS");
     double t_start = get_time_ms_precise();
     char* json_response = NULL;
     int status_code = 0;
@@ -849,6 +1003,11 @@ int main(int argc, char** argv) {
     }
     double elapsed_ms = get_time_ms_precise() - t_start;
 
+    const char* status_name = (status_code == 10) ? "SATISFIABLE" :
+                              ((status_code == 20) ? "UNSATISFIABLE" : "UNKNOWN");
+    LOG_INFO("SOLVER", "Solve finished in %.4f ms. Status code: %d (%s)",
+             elapsed_ms, status_code, status_name);
+
     // Display Result
     if (json_response) {
         printf("%s\n", json_response);
@@ -857,12 +1016,14 @@ int main(int argc, char** argv) {
 
     if (benchmark_mode) {
         printf("\n================ [ Sodium Benchmark Telemetry ] ================\n");
-        printf(" Status Code:      %d (%s)\n", status_code,
-            (status_code == 10) ? "SATISFIABLE" : ((status_code == 20) ? "UNSATISFIABLE" : "UNKNOWN"));
+        printf(" Status Code:      %d (%s)\n", status_code, status_name);
         printf(" Solve Latency:    %.4f ms (%.6f seconds)\n", elapsed_ms, elapsed_ms / 1000.0);
         printf("================================================================\n");
     }
 
     if (content_to_free) free(content_to_free);
-    return (status_code == 10) ? 0 : ((status_code == 20) ? 20 : 1);
+    int exit_code = (status_code == 10) ? 0 : ((status_code == 20) ? 20 : 1);
+    LOG_INFO("CORE", "Sodium execution terminating with exit code: %d", exit_code);
+    logger_shutdown();
+    return exit_code;
 }
