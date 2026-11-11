@@ -56,6 +56,7 @@ static void api_sb_ensure(ApiStringBuilder* sb, size_t extra) {
 
 static void api_sb_append_str(ApiStringBuilder* sb, const char* str) {
     if (!str) return;
+
     size_t len = strlen(str);
     api_sb_ensure(sb, len);
     memcpy(sb->data + sb->length, str, len);
