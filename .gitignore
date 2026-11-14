@@ -1,8 +1,20 @@
 .DS_Store
-.venv
+.venv/
 __pycache__/
 *.pyc
 *.o
 *.dylib
 *.so
 sodium
+
+# Generated / temporary files
+*.dySM
+
+# Generated implementation files (only when they follow this naming convention)
+*.generated.c
+*.generated.h
+.gitignore
+# Build artifacts
+build/
+dist/
+*.out
