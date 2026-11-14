@@ -9,7 +9,7 @@
 [![Language](https://img.shields.io/badge/Language-C11_%2F_Pure_C-00599C.svg?style=for-the-badge&logo=c)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
 [![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg?style=for-the-badge)]()
 [![Core](https://img.shields.io/badge/Core-Advanced_CDCL_%2B_VSIDS-orange.svg?style=for-the-badge)]()
-[![Architecture](https://img.shields.io/badge/Architecture-Dual_Engine_Neuro--Symbolic-8A2BE2.svg?style=for-the-badge)]()
+[![Architecture](https://img.shields.io/badge/Architecture-Classical_NLP_%2B_CDCL-8A2BE2.svg?style=for-the-badge)]()
 [![Benchmark](https://img.shields.io/badge/Scale-10M_Clauses_in_25s-brightgreen.svg?style=for-the-badge)]()
 [![Memory](https://img.shields.io/badge/Memory-Generational_Handles_%2B_Arenas-informational.svg?style=for-the-badge)]()
 [![Deterministic](https://img.shields.io/badge/Guarantees-100%25_Formal_Proof-purple.svg?style=for-the-badge)]()
@@ -90,10 +90,10 @@ Sodium is engineered from the bare metal up in **C11**, decoupling semantic tran
 +--------------------------------------------------------------------------------------------------+
 |                                         NLP REASONING ENGINE                                     |
 |                                                                                                  |
-|   CLASSICAL DETERMINISTIC (NLPAlgo/)                                                             |
-|   • 7-Step Linguistic Pipeline (Regex / NLTK)                                                    |
-|   • SVO Parser + Distance Entity Resolver                                                        |
-|   • Math Shielding + WordNet + Centrality Score                                                  |
+|   CONTROLLED CLASSICAL NLP (NLPAlgo/)                                                             |
+|   • Normalization and logical tokenization                                                       |
+|   • Precedence-aware parser and intermediate logic representation                                |
+|   • Exact entity resolution and Tseitin CNF compilation                                          |
 +-------------------------------------------------+------------------------------------------------+
                                                   |
                                                   v
@@ -136,23 +136,31 @@ Sodium explicitly balances compile-time performance guarantees with run-time fle
 ┌──────────────────────────────────────────────┬──────────────────────────────────────────────┐
 │            COMPILE-TIME VARIABILITY          │             RUN-TIME VARIABILITY             │
 ├──────────────────────────────────────────────┼──────────────────────────────────────────────┤
-│ • Zero-overhead binary specialization        │ • Dynamic NLP Engine selection               │
-│ • `#ifdef SODIUM_ENABLE_GUI` conditional code│   (classical NLP vs direct solver input)     │
-│ • Headless C server vs C++17 Desktop ImGui   │ • Web UI interactive engine switch           │
-│ • Static arena capacities & memory limits    │ • Input format auto-detection                │
-│ • Inlined critical CDCL routines & 2WL loop  │   (DIMACS CNF vs Mode 1 JSON vs Natural Text)│
-│ • Compiler optimization flags (-O3, LTO)     │ • Input format auto-detection                │
+│ • Zero-overhead binary specialization        │ • Classical NLP vs direct solver input       │
+│ • `#ifdef SODIUM_ENABLE_GUI` conditional code│ • Input format auto-detection                │
+│ • Headless C server vs C++17 Desktop ImGui   │ • Web UI NLP and DIMACS modes                │
+│ • Static arena capacities & memory limits    │ • DIMACS, JSON, and natural-language inputs  │
+│ • Inlined critical CDCL routines & 2WL loop  │   are dispatched to their supported paths   │
+│ • Compiler optimization flags (-O3, LTO)     │                                              │
 └──────────────────────────────────────────────┴──────────────────────────────────────────────┘
 ```
 
 #### Compile-Time Variability
-- **Conditional Subsystem Compilation**: The desktop Dear ImGui graphical interface is governed by `#ifdef SODIUM_ENABLE_GUI`. When running `make server`, the C++ runtime, GLFW window management, and OpenGL bindings are completely excised. This produces a lightweight, zero-external-dependency, pure C11 headless binary ideal for containerized microservices and cloud deployments.
+- **Conditional Subsystem Compilation**: The desktop Dear ImGui graphical interface is governed by `#ifdef SODIUM_ENABLE_GUI`. When running `make server`, the C++ runtime, GLFW window management, and OpenGL bindings are omitted from the native C11 binary. The Natural Language endpoint also invokes the Python Classical NLP pipeline and its Python dependencies.
 - **Fixed-Footprint Arena Sizing**: Memory pool limits (such as record handle table limits and initial contiguous clause arrays) are configured via preprocessor definitions, guaranteeing predictable memory footprints on embedded and constrained platforms.
 - **Inlined Inner Loops**: Boolean constraint propagation (BCP) and two-watched-literal updates utilize `static inline` functions to eliminate function-call overhead in tight solving loops.
 
 #### Run-Time Variability
-- **Classical NLP Translation**: Natural-language requirements are processed by the deterministic 7-step pipeline (`NLPAlgo/`). Sodium does not accept LLM-based work or route prompts to neural model providers.
+- **Classical NLP Translation**: Controlled natural-language requirements pass through normalization, tokenization, logical parsing, entity resolution, CNF compilation, contract validation, and the CDCL solver.
 - **Dynamic Input Auto-Detection**: The orchestrator inspects incoming data on-the-fly, instantly branching between standard DIMACS CNF files, CaDiCaL Mode 1 JSON payloads, piped stdin streams, and raw natural language sentences.
+
+Natural-language solving follows this path:
+
+```text
+Natural Language Input -> Classical NLP Pipeline -> CNF Contract -> Solver Bridge -> C CDCL Solver
+```
+
+The CLI and HTTP orchestrator run the classical pipeline to produce validated CNF JSON, then pass that JSON to the C solver API. `ClassicalNLPPipeline.solve()` can also invoke the same solver through `solver_bridge.py`.
 
 ---
 
@@ -165,17 +173,16 @@ Sodium’s architecture adheres strictly to proven software engineering patterns
 2. **Bridge Pattern**:
    Decouples the presentation layer (CLI, Dear ImGui desktop window, embedded HTTP daemon) from the concrete SAT solving engine. The user interface can be completely redesigned or swapped without modifying a single line of the underlying CDCL or memory logic.
 3. **Strategy Pattern**:
-   - *Linguistic Translation Strategy*: Constraint extraction uses the deterministic classical 7-step pipeline.
+   - *Linguistic Translation*: Constraint extraction uses the controlled Classical NLP pipeline.
    - *Decision Strategy*: The CDCL solver can interchange variable branching heuristics (VSIDS activity-based vs. static orderings).
 4. **Pipes-and-Filters Pattern (`src/NLP/NLPAlgo/`)**:
-   The Classical Non-LLM methodology is organized as a strict, directional pipeline where the output of each filter feeds directly into the next:
-   $$\text{Tokenization} \longrightarrow \text{POS/Dep Parsing} \longrightarrow \text{Entity Extraction} \longrightarrow \text{Knowledge Injection} \longrightarrow \text{Lexicon Scoring} \longrightarrow \text{Static Vectorization} \longrightarrow \text{CNF Synthesis}$$
+   The Classical NLP subsystem uses a directional compiler pipeline: normalization and tokenization produce logical tokens; parsing builds an intermediate logical representation (ILR); exact entity resolution assigns variables; a dedicated compiler emits CNF; the contract validates it before solver integration.
 5. **Arena & Memory Pool Pattern (`src/SAT/CDCL/Clauses/clause_array.c`)**:
    Clauses and literals are allocated within contiguous memory blocks rather than through scattered individual heap allocations. This guarantees spatial cache locality and eliminates memory fragmentation during prolonged solving runs.
 6. **Generational Handle Pattern (`src/SAT/CDCL/memory.c`)**:
    References to internal memory records use 64-bit compound handles containing an index and a generation counter (`RecordHandle { index, generation }`). Stale handles from deallocated or compacted records are immediately detected, preventing dangling pointer dereferences and ABA resurrection bugs.
 7. **Adapter Pattern**:
-   - The Python bridge adapts classical pipeline output into C-compatible memory buffers.
+   - The Python solver bridge sends validated CNF JSON through the C solver API.
    - The Dear ImGui wrapper (`src/InterfaceAndUI/userInterface.cpp`) adapts the C++ immediate-mode GUI lifecycle to the synchronous C API.
 
 ---
@@ -197,7 +204,9 @@ Sodium’s architecture adheres strictly to proven software engineering patterns
 | **Contiguous Arenas** | `src/SAT/CDCL/Clauses/` | Flat-array contiguous clause storage, cache-line aligned literal iteration, zero pointer dereferencing overhead. |
 | **Unified C Facade API** | `src/API.c`, `src/API.h` | High-level API for DIMACS parsing, solution verification (`sodium_api_verify_formula`), model extraction. |
 | **Mode 1 JSON SAT API** | `src/SAT/sat_api.c` | CaDiCaL-compatible in-memory JSON interface for programmatic integration with high-level languages. |
-| **Classical NLP** | `src/NLP/NLPAlgo/` | 7-step deterministic rule & math parser: Tokenization, SVO Parsing, Distance Matching, WordNet, VADER, Static Vectors, CNF Synthesis. |
+| **Classical NLP** | `src/NLP/NLPAlgo/` | Controlled-language tokenization and logical parsing, ILR construction, exact proposition resolution, and Tseitin CNF compilation. |
+| **CNF Contract** | `src/NLP/cnf_contract.py` | Pydantic-validated CNF requests, clause normalization, variable metadata, and JSON serialization. |
+| **Solver Bridge** | `src/NLP/solver_bridge.py` | Python ctypes bridge to the C CDCL JSON API. |
 | **Unified Orchestrator** | `src/sodium_orchestrator.c` | Single executable handling CLI arguments, stdin pipes, embedded Web server, and native desktop UI dispatch. |
 | **Interactive Web Studio** | `src/sodium_orchestrator.c` | Embedded HTTPS-ready HTTP daemon, single-page web app, Royal Purple theme, REST API (`/api/v1/solve`, `/api/v1/nlp-solve`). |
 | **Native Desktop UI** | `src/InterfaceAndUI/` | Immediate-mode Dear ImGui desktop window with rule editors, live variable inspection, and verification dashboard. |
@@ -206,72 +215,69 @@ Sodium’s architecture adheres strictly to proven software engineering patterns
 
 ## 📖 User Guide: Classical NLP & Math Compiler
 
-Sodium accepts direct formal solver inputs and natural-language requirements through its deterministic classical pipeline. It does not accept LLM-based work or use generative models to translate requirements.
+Sodium accepts direct formal solver inputs and natural-language requirements through its deterministic classical pipeline.
 
-```
-Natural-language requirements are handled by the deterministic 7-step classical pipeline; DIMACS CNF and JSON inputs can be sent directly to the solver.
-```
+Natural-language requirements are compiled by the controlled Classical NLP pipeline; DIMACS CNF and JSON inputs can also be sent directly to the solver.
 
 ---
 
 ### Classical NLP & Math Compiler
 
-The Classical Non-LLM engine provides a **100% deterministic, offline, and private** reasoning bridge. It uses zero neural weights and requires no API keys, executing a deterministic 7-step linguistic and mathematical compilation pipeline.
+The Classical NLP pipeline deterministically compiles controlled logical statements and mathematical propositions offline. It does not infer arbitrary conversational meaning.
 
-#### The 7-Step Non-LLM Pipeline
+#### Compilation Pipeline
 ```
 [ Raw Text & Math Equations ]
               │
               ▼
-[ 1. Tokenization & Normalization ]    ──> Regex boundary splitter + Lemmatization (NLTK)
+[ 1. Normalization & Tokenization ]    ──> Rule boundaries, math shielding, logical tokens
               │
               ▼
-[ 2. Syntactic & Linguistic Parsing ]  ──> POS Tagging + SVO & Conditional Dependency Parsing
+[ 2. Logical Parsing ]                 ──> Precedence-aware recursive descent
               │
               ▼
-[ 3. Rule-Based Entity Extraction ]    ──> Regex + Levenshtein / Jaro-Winkler String Distance
+[ 3. Intermediate Logic Representation ] ──> Validated proposition/operator tree
               │
               ▼
-[ 4. Structural Knowledge Injection ]  ──> WordNet Synsets (Synonyms, Hypernyms, Antonym Negation)
+[ 4. Entity Resolution ]               ──> Exact normalized proposition identity
               │
               ▼
-[ 5. Lexicon-Based Feature Scoring ]   ──> VADER Sentiment Polarity + TextRank Keyphrase Centrality
+[ 5. Logical-to-CNF Compiler ]         ──> Tseitin clauses with auxiliary variables
               │
               ▼
-[ 6. Static Vectorization ]           ──> Word2Vec / GloVe lookup table for semantic clustering
+[ CNF Contract ]
               │
               ▼
-[ 7. Vector Aggregation & Scoring ]   ──> TF-IDF + Graph Centrality + Deterministic CNF Synthesis
+[ Solver Bridge ]
               │
               ▼
-[ Solved by Sodium CDCL Core ]
+[ C CDCL Solver ]
 ```
 
-#### 1. Nuance & Rule Formatting Guidelines
+#### Supported Grammar and Semantics
 > [!IMPORTANT]
-> When using the Non-LLM Classical engine, write rules in clear, well-separated English or mathematical statements.
-> - Separate each distinct rule using a **period (`.`)**, **semicolon (`;`)**, or **newline**.
-> - Use unambiguous conditional structures (`If ... then ...`, `... implies ...`, `... requires ...`).
-> - Use explicit mutual exclusion phrasing (`Either A or B, but not both`, `A and B cannot both be active`).
-> - Mathematical inequalities and symbols can be typed directly.
+> Use explicit logical structure. Each proposition is treated as an opaque atom; the compiler does not infer synonyms, world knowledge, or unstated constraints.
+
+Rules may be separated by periods followed by whitespace, semicolons, or newlines. Supported forms are atomic propositions; `NOT A` and copular `A is not B`; `A AND B`; `A OR B`; `IF A THEN B` (also `If A, B`); `A IMPLIES B`; `A IFF B`; `A IF AND ONLY IF B`; and parentheses. `must be` in an atomic assertion is normalized as assertion wording (for example, “the network must be available” is one atom). Mathematical expressions protected by the math tokenizer are also treated as atoms.
+
+Precedence, from strongest to weakest, is `NOT`, `AND`, `OR`, `IMPLIES`, then `IFF`. Implication groups to the right; equivalence groups to the left. Parentheses override precedence. Separate sentences are all asserted as constraints, so the complete input is their conjunction. Unsupported forms such as `XOR`, `unless`, temporal statements, quantifiers, and probability wording produce an error instead of being guessed.
 
 #### 2. Command-Line Execution
 ```bash
-# Run with the --non-llm flag via Sodium CLI
-./sodium --nlp "Server A and Server B cannot both be active. Server A is online." --non-llm
+./sodium --nlp "NOT (Server A is active AND Server B is active). Server A is online."
 
 # Run complex implications with mathematical relations
-./sodium --nlp "If x + y <= 10 then SystemReady is active. x + y <= 10. SystemReady is required." --non-llm
+./sodium --nlp "If x + y <= 10 then SystemReady is active. x + y <= 10. SystemReady is required."
 
 # Run directly via the Python classical pipeline
-python3 src/NLP/NLPAlgo/classical_pipeline.py "Resource X requires Resource Y. Resource X is enabled."
+python3 -m src.NLP.NLPAlgo.classical_pipeline --text "Resource X IMPLIES Resource Y. Resource X is enabled."
 ```
 
 #### 3. Interactive Web Studio
 1. Launch `./sodium --serve --port 8080` and open `http://localhost:8080` in your browser.
 2. The Web Studio opens directly in **Natural Language (NLP)** mode with a clean, distraction-free interface.
-3. Toggle the engine button to **Non-LLM (Classical NLP)**. The interface dynamically activates the **Separated Multi-Line Rule Editor** (`Rule 1`, `Rule 2`, `+ Add Rule`) to ensure each distinct constraint is isolated and prevent continuous run-on sentences.
-4. Enter each requirement on its own line and click **Solve with Sodium CDCL**. The problem is solved locally in microseconds with live variable assignment pills.
+3. Enter each requirement in its own row in the **Separated Multi-Line Rule Editor** (`Rule 1`, `Rule 2`, `+ Add Rule`).
+4. Click **Solve with Sodium CDCL** to compile the rules and display the solver result.
 
 ---
 
@@ -281,118 +287,28 @@ Sodium natively shields, parses, and grounds mathematical expressions and formal
 
 | Mathematical / Logical Concept | Standard Symbols | ASCII Equivalents | Example Ingestion |
 | :--- | :--- | :--- | :--- |
-| **Implication** | $\implies$, $\to$ | `->`, `implies`, `requires` | `SensorA -> AlarmTriggered` |
-| **Equivalence / Biconditional** | $\iff$, $\equiv$ | `<->`, `equivalent`, `iff` | `HighLoad <-> ScaleOut` |
+| **Implication** | $\implies$, $\to$ | `->`, `implies`, `IF ... THEN ...` | `SensorA -> AlarmTriggered` |
+| **Equivalence / Biconditional** | $\iff$ | `<->`, `iff`, `if and only if` | `HighLoad <-> ScaleOut` |
 | **Conjunction / Disjunction** | $\land$, $\lor$ | `AND`, `OR`, `&&`, `\|\|` | `MasterOnline AND BackupReady` |
-| **Negation** | $\neg$, $\sim$ | `NOT`, `!`, `disabled`, `offline` | `NOT MaintenanceMode` |
-| **Mutual Exclusion (Mutex)** | $\oplus$, $\not\equiv$ | `xor`, `either A or B but not both` | `PrimaryNode XOR SecondaryNode` |
-| **Relational Inequalities** | $\le, \ge, \neq, =, <, >$ | `<=`, `>=`, `!=`, `==`, `<`, `>` | `MemoryUsage <= 90 -> ClusterHealthy` |
-| **Linear Arithmetic Grounding** | $+$, $-$, $*$, $/$ | `+`, `-`, `*`, `/` | `x + y <= 10 -> SafeState` |
+| **Negation** | $\neg$ | `NOT`, `!`, `~`, `¬` | `NOT MaintenanceMode` |
+| **Proposition with math** | — | Mathematical text is an opaque atom | `(x + y <= 10) IMPLIES SafeState` |
+
+`requires`, `cannot both`, `either/or`, `offline`, `XOR`, and arithmetic reasoning are not interpreted as special semantics. Encode the intended logic with supported operators; the mathematical relation itself remains a proposition, not a numeric constraint for the SAT solver.
 
 ---
 
-### 📘 End-to-End Walkthrough: Concrete Real-World Example
+### Example: Controlled Rule Set
 
-To understand how to use Sodium appropriately in practice, let's step through an authentic enterprise scenario: **A High-Availability Dual-Server Split-Brain Prevention Policy**.
+The following input uses only the supported propositional grammar:
 
-#### The Problem Statement
-An infrastructure engineering team specifies the following four operational rules:
-1. *PrimaryServer and StandbyServer cannot both be active at the same time (prevents data corruption and split-brain).*
-2. *Either PrimaryServer or StandbyServer must be active (ensures high availability and zero downtime).*
-3. *If MaintenanceMode is active, PrimaryServer must be offline.*
-4. *MaintenanceMode is active.*
-
----
-
-#### Workflow 1: Classical Non-LLM Execution (100% Offline & Private)
-
-Run Sodium using the `--non-llm` flag. No internet connection, API keys, or neural model weights are needed:
-
-```bash
-./sodium --nlp "PrimaryServer and StandbyServer cannot both be active. Either PrimaryServer or StandbyServer must be active. If MaintenanceMode is active then PrimaryServer is offline. MaintenanceMode is active." --non-llm --benchmark
+```text
+NOT (PrimaryServer AND StandbyServer).
+PrimaryServer OR StandbyServer.
+IF MaintenanceMode THEN NOT PrimaryServer.
+MaintenanceMode.
 ```
 
-**Sodium's Output:**
-```json
-{
-  "format": "cnf",
-  "metadata": {
-    "description": "Compiled via Classical Non-LLM NLP Pipeline (Rule & Math Compiler)",
-    "variable_mapping": {
-      "1": "PrimaryServer",
-      "2": "StandbyServer",
-      "3": "Either_PrimaryServer_or_StandbyServer",
-      "4": "MaintenanceMode"
-    }
-  },
-  "clauses": [
-    [-1, -2, 0],
-    [3, 0],
-    [-4, -1, 0],
-    [4, 0]
-  ],
-  "response": {
-    "status": "SATISFIABLE",
-    "status_code": 10,
-    "statistics": {
-      "variables": 4,
-      "clauses": 4
-    },
-    "raw_model": [-1, 2, 3, 4],
-    "assignment": {
-      "PrimaryServer": false,
-      "StandbyServer": true,
-      "Either_PrimaryServer_or_StandbyServer": true,
-      "MaintenanceMode": true
-    }
-  }
-}
-```
-
-**Why This Assignment?**
-1. Rule 4 sets `MaintenanceMode = TRUE`.
-2. Rule 3 (`MaintenanceMode -> NOT PrimaryServer`) forces `PrimaryServer = FALSE`.
-3. Rule 2 (`Either PrimaryServer or StandbyServer must be active`) forces `StandbyServer = TRUE`.
-4. Rule 1 (`NOT (PrimaryServer AND StandbyServer)`) is fully respected because only StandbyServer is active.
-5. Sodium solved the problem in **0.0210 milliseconds (21 microseconds)** with zero hallucinations.
-
----
-
-#### Workflow 2: Direct DIMACS CNF Execution
-
-The identical formal problem can be expressed directly in DIMACS CNF (`server_policy.cnf`):
-
-```cnf
-c High-Availability Dual-Server Split-Brain Prevention Policy
-c 1: PrimaryServer, 2: StandbyServer, 3: MaintenanceMode
-p cnf 3 4
--1 -2 0    # Cannot both be active (Split-Brain Prevention)
-1 2 0      # At least one must be active (High Availability)
--3 -1 0    # If MaintenanceMode then NOT PrimaryServer
-3 0        # MaintenanceMode is active
-```
-
-Solve it from the terminal:
-```bash
-./sodium --file server_policy.cnf --benchmark
-```
-
----
-
-#### Workflow 3: Interactive Web Studio
-
-1. Start the server daemon:
-   ```bash
-   ./sodium --serve --port 8080
-   ```
-2. Open **http://localhost:8080** in your browser.
-3. Switch the engine button to **Non-LLM (Classical NLP)**.
-4. Enter each rule in its own dedicated row:
-   - **Rule 1**: `PrimaryServer and StandbyServer cannot both be active`
-   - **Rule 2**: `Either PrimaryServer or StandbyServer must be active`
-   - **Rule 3**: `If MaintenanceMode is active then PrimaryServer is offline`
-   - **Rule 4**: `MaintenanceMode is active`
-5. Click **Solve with Sodium CDCL**. The assignment table renders immediately showing `StandbyServer = TRUE`, `PrimaryServer = FALSE`, and `MaintenanceMode = TRUE` with microsecond latency metrics.
+Compile it through the Python pipeline with `python3 -m src.NLP.NLPAlgo.classical_pipeline --text '<rules>' --solve`, or submit it through the application's Natural Language interface. Tseitin auxiliary variables may appear in the generated contract alongside the mapped source propositions.
 
 ---
 
@@ -413,11 +329,11 @@ Sodium maintains a persistent, thread-safe action log file (`sodium.log`) tracki
 [2026-11-09 21:54:59.057] [INFO ] [CORE    ] Sodium Automated Reasoning Engine Session Started
 [2026-11-09 21:54:59.057] [INFO ] [CORE    ] Logging output initialized to: sodium.log
 [2026-11-09 21:54:59.057] [INFO ] [CORE    ] Sodium engine starting up (PID: 14572)
-[2026-11-09 21:54:59.057] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --nlp ... --non-llm --benchmark
+[2026-11-09 21:54:59.057] [INFO ] [CONFIG  ] Command-line invocation: ./sodium --nlp ... --benchmark
 [2026-11-09 21:54:59.057] [INFO ] [CONFIG  ] Action logging destination: sodium.log
 [2026-11-09 21:54:59.057] [INFO ] [CORE    ] Mode selected: Local CLI Execution
-[2026-11-09 21:54:59.057] [INFO ] [NLP     ] Routing natural language prompt via [Classical Non-LLM]: 'PrimaryServer and StandbyServer cannot both be active...'
-[2026-11-09 21:54:59.322] [INFO ] [NLP     ] NLP router returned 584 bytes of JSON formula
+[2026-11-09 21:54:59.057] [INFO ] [NLP     ] Compiling controlled logical input with Classical NLP: 'NOT (PrimaryServer AND StandbyServer)...'
+[2026-11-09 21:54:59.322] [INFO ] [NLP     ] Classical NLP pipeline returned 584 bytes of JSON formula
 [2026-11-09 21:54:59.322] [INFO ] [SOLVER  ] Invoking CDCL solver engine (JSON format)
 [2026-11-09 21:54:59.322] [INFO ] [SOLVER  ] Solve finished in 0.0210 ms. Status code: 10 (SATISFIABLE)
 [2026-11-09 21:54:59.322] [INFO ] [CORE    ] Sodium execution terminating with exit code: 0
@@ -548,7 +464,7 @@ In the spirit of honest engineering and transparent technical governance, the fo
 - **Limitation**: It does not yet implement a multi-threaded portfolio solver (such as running multiple VSIDS decay parameters or random seeds in parallel while sharing learned conflict clauses across CPU cores).
 
 ### 5. First-Order Logic & Infinite Quantifiers ($\forall, \exists$)
-- **Status**: Both NLP engines ground specifications into propositional logic.
+- **Status**: The Classical NLP pipeline grounds specifications into propositional logic.
 - **Limitation**: Arbitrary first-order quantification over infinite domains ($\forall x \in \mathbb{R}, \exists y > x$) cannot be directly checked without finite domain unrolling.
 
 ### 6. Desktop GUI Window Dependencies
@@ -626,7 +542,7 @@ Then open **http://localhost:8080** in any browser. Features include:
 echo "p cnf 2 2\n1 2 0\n-1 2 0" | ./sodium
 
 # Solve natural language using the deterministic classical pipeline
-./sodium --nlp "If TaskA is running then TaskB must be paused. TaskA is running." --non-llm
+./sodium --nlp "If TaskA is running then TaskB must be paused. TaskA is running."
 ```
 
 ---
@@ -642,8 +558,7 @@ echo "p cnf 2 2\n1 2 0\n-1 2 0" | ./sodium
 | `./sodium --gui` | Launches the native Dear ImGui desktop window |
 | `./sodium --serve --port 8080` | Starts the embedded web studio and REST API at http://localhost:8080 |
 | `./sodium --file <path.cnf>` | Solves a DIMACS CNF problem file |
-| `./sodium --nlp "<text>"` | Solves natural language via the deterministic Classical 7-step pipeline |
-| `./sodium --nlp "<text>" --non-llm` | Explicitly selects the Classical 7-step pipeline |
+| `./sodium --nlp "<text>"` | Compiles controlled logical statements via the Classical NLP pipeline |
 | `./sodium --log <path>` | Specify destination file for action logging (default: sodium.log) |
 | `tail -f sodium.log` | Monitor real-time action logs from startup to shutdown |
 | `./sodium --benchmark` | Displays microsecond telemetry and variable assignment metrics |
@@ -716,7 +631,7 @@ clang -Wall -Wextra -O3 -I src/SAT/CDCL example.c \
 - [x] **Q4 2026**: Generational handle-based memory management with automated compaction (`memory.c`).
 - [x] **Q4 2026**: Contiguous arena `ClauseArray` for zero-pointer-overhead clause storage.
 - [x] **Q4 2026**: Mode 1 JSON SAT API (`sat_api.c`) — CaDiCaL-compatible in-memory solver interface.
-- [x] **Q4 2026**: Classical Non-LLM 7-Step NLP & Math compiler (`src/NLP/NLPAlgo/`).
+- [x] **Q4 2026**: Classical 7-Step NLP & Math compiler (`src/NLP/NLPAlgo/`).
 - [x] **Q4 2026**: Unified system orchestrator (`sodium_orchestrator.c`) — single binary for desktop UI, web server, and CLI.
 - [x] **Q4 2026**: Embedded HTTPS-ready web studio with interactive CDCL solver, REST API, and Royal Purple UI.
 - [ ] **Q1 2027**: Clause preprocessing and inprocessing passes (BVE, BCE, subsumption elimination).

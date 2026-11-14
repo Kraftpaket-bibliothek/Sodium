@@ -6,13 +6,12 @@
  * @brief Unified Sodium Top-Level Facade Header.
  *        The codebase is organized into distinct feature modules:
  *        - SAT:             Conjunctive Normal Form & CDCL solving (src/SAT/sat_api.h)
- *        - NLP:             Semantic rule translation & prompt engineering (src/NLP/nlp_api.h)
+ *        - NLP:             Classical translation in the Python pipeline (src/NLP/NLPAlgo/)
  *        - InterfaceAndUI:  Dear ImGui frontend & guided rule builder (src/InterfaceAndUI/userInterface.h)
  *        - SMT:             Satisfiability Modulo Theories (src/SMT/)
  */
 
 #include "SAT/sat_api.h"
-#include "NLP/nlp_api.h"
 #include "InterfaceAndUI/userInterface.h"
 
 #ifdef __cplusplus

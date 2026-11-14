@@ -3,14 +3,12 @@
 # Package: src.NLP.NLPAlgo.common
 # ============================================================================
 
-from .logic_types import Proposition, LogicalRelation, LogicalOp, ParsedRule, ClauseAST
+from .logic_types import InvalidLogicalExpressionError, LogicalExpression, LogicalOp
 from .math_shield import MathShield
 
 __all__ = [
-    "Proposition",
-    "LogicalRelation",
+    "LogicalExpression",
+    "InvalidLogicalExpressionError",
     "LogicalOp",
-    "ParsedRule",
-    "ClauseAST",
     "MathShield"
 ]
