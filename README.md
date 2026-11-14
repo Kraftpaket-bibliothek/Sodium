@@ -22,7 +22,7 @@
 [Why Sodium?](#-why-sodium) •
 [Architecture & Engineering](#-system-architecture--engineering-principles) •
 [Feature Catalog](#-complete-feature-catalog) •
-[User Guide (LLM & Non-LLM)](#-user-guide-operating-sodium-llm-vs-non-llm) •
+[User Guide (Classical NLP)](#-user-guide-classical-nlp--math-compiler) •
 [Real-World Example](#-end-to-end-walkthrough-concrete-real-world-example) •
 [Action Logging](#-comprehensive-application-action-logging-sodiumlog) •
 [Core Technology](#-core-technology--technical-moat) •
@@ -41,7 +41,7 @@ High-stakes industries—aerospace, defense, chip design, fintech, and supply ch
 
 Until now, enterprises had two deeply flawed choices:
 1. **Manual Formal Verification**: Requires specialized PhDs, takes months of human labor, and costs millions.
-2. **Probabilistic Large Language Models (LLMs)**: Fast and natural, but **prone to hallucinations, stochastic errors, and zero mathematical certainty**.
+2. **Probabilistic Large Language Models (LLMs)**: Sodium does not accept LLM-based work; its reasoning workflow is deterministic and symbolic.
 
 **Sodium is an industrial automated reasoning engine that closes this gap.** It ingests complex natural language requirements, mathematical equations, and business rules, extracting hard constraints and compiling them directly into a custom-engineered, ultra-low-latency **CDCL (Conflict-Driven Clause Learning) and SMT (Satisfiability Modulo Theories) engine**. 
 
@@ -70,7 +70,7 @@ Sodium does not guess. It **proves**—synthesizing and presenting the verifiabl
 | **Input Modality** | Natural Language | Raw SMT-LIB2 / DIMACS CNF | **Natural Language + Math + DIMACS** |
 | **Mathematical Soundness** | ❌ None (Stochastic) | ✅ 100% Provable | **✅ 100% Provable** |
 | **Output Interpretation** | Probabilistic text | Abstract Boolean Models | **Plausible, Concrete Satisfying Model** |
-| **Reasoning Method** | Cloud API (Stochastic) | Pure Solvers (No NLP) | **Dual Engine: Neural LLM OR Classical NLP** |
+| **Reasoning Method** | Cloud API (Stochastic) | Pure Solvers (No NLP) | **Classical NLP + CDCL** |
 | **Latency & Overhead** | Seconds (API dependent) | Heavy dynamic heaps | **Microsecond Native C (Zero-overhead)** |
 | **Memory Architecture** | Cloud GPUs | Standard Heap (GC pauses) | **Custom Generational Memory + Compaction** |
 
@@ -88,12 +88,12 @@ Sodium is engineered from the bare metal up in **C11**, decoupling semantic tran
                                                   |
                                                   v
 +--------------------------------------------------------------------------------------------------+
-|                                     DUAL NLP REASONING ENGINE                                    |
+|                                         NLP REASONING ENGINE                                     |
 |                                                                                                  |
-|   METHOD A: NEURAL LLM ROUTER (llm_router.py)  |  METHOD B: CLASSICAL DETERMINISTIC (NLPAlgo/)   |
-|   • Pydantic Bidirectional Contract Validation |  • 7-Step Linguistic Pipeline (Regex / NLTK)    |
-|   • OpenAI / Ollama / DeepSeek / vLLM Routing  |  • SVO Parser + Distance Entity Resolver        |
-|   • Zero-Hallucination Schema Enforcement      |  • Math Shielding + WordNet + Centrality Score  |
+|   CLASSICAL DETERMINISTIC (NLPAlgo/)                                                             |
+|   • 7-Step Linguistic Pipeline (Regex / NLTK)                                                    |
+|   • SVO Parser + Distance Entity Resolver                                                        |
+|   • Math Shielding + WordNet + Centrality Score                                                  |
 +-------------------------------------------------+------------------------------------------------+
                                                   |
                                                   v
@@ -137,11 +137,11 @@ Sodium explicitly balances compile-time performance guarantees with run-time fle
 │            COMPILE-TIME VARIABILITY          │             RUN-TIME VARIABILITY             │
 ├──────────────────────────────────────────────┼──────────────────────────────────────────────┤
 │ • Zero-overhead binary specialization        │ • Dynamic NLP Engine selection               │
-│ • `#ifdef SODIUM_ENABLE_GUI` conditional code│   (`--engine openai` vs `--non-llm`)         │
+│ • `#ifdef SODIUM_ENABLE_GUI` conditional code│   (classical NLP vs direct solver input)     │
 │ • Headless C server vs C++17 Desktop ImGui   │ • Web UI interactive engine switch           │
 │ • Static arena capacities & memory limits    │ • Input format auto-detection                │
 │ • Inlined critical CDCL routines & 2WL loop  │   (DIMACS CNF vs Mode 1 JSON vs Natural Text)│
-│ • Compiler optimization flags (-O3, LTO)     │ • Multi-provider LLM endpoint routing        │
+│ • Compiler optimization flags (-O3, LTO)     │ • Input format auto-detection                │
 └──────────────────────────────────────────────┴──────────────────────────────────────────────┘
 ```
 
@@ -151,9 +151,8 @@ Sodium explicitly balances compile-time performance guarantees with run-time fle
 - **Inlined Inner Loops**: Boolean constraint propagation (BCP) and two-watched-literal updates utilize `static inline` functions to eliminate function-call overhead in tight solving loops.
 
 #### Run-Time Variability
-- **Dynamic NLP Engine Dispatch**: The system switches dynamically between the Neural LLM Router (`llm_router.py`) and the Classical Non-LLM 7-Step Pipeline (`NLPAlgo/`) via CLI flags (`--non-llm`) or interactive UI toggles without requiring re-compilation.
+- **Classical NLP Translation**: Natural-language requirements are processed by the deterministic 7-step pipeline (`NLPAlgo/`). Sodium does not accept LLM-based work or route prompts to neural model providers.
 - **Dynamic Input Auto-Detection**: The orchestrator inspects incoming data on-the-fly, instantly branching between standard DIMACS CNF files, CaDiCaL Mode 1 JSON payloads, piped stdin streams, and raw natural language sentences.
-- **Configurable Model Endpoints**: Neural LLM routing dynamically binds to OpenAI GPT-4o, Ollama local instances (`llama3`, `deepseek-r1`), or any OpenAI-compatible vLLM server via environment variables and CLI arguments.
 
 ---
 
@@ -166,7 +165,7 @@ Sodium’s architecture adheres strictly to proven software engineering patterns
 2. **Bridge Pattern**:
    Decouples the presentation layer (CLI, Dear ImGui desktop window, embedded HTTP daemon) from the concrete SAT solving engine. The user interface can be completely redesigned or swapped without modifying a single line of the underlying CDCL or memory logic.
 3. **Strategy Pattern**:
-   - *Linguistic Translation Strategy*: The NLP subsystem provides interchangeable strategies for constraint extraction: `NeuralStrategy` (probabilistic LLM with Pydantic verification) and `ClassicalStrategy` (deterministic 7-step pipeline).
+   - *Linguistic Translation Strategy*: Constraint extraction uses the deterministic classical 7-step pipeline.
    - *Decision Strategy*: The CDCL solver can interchange variable branching heuristics (VSIDS activity-based vs. static orderings).
 4. **Pipes-and-Filters Pattern (`src/NLP/NLPAlgo/`)**:
    The Classical Non-LLM methodology is organized as a strict, directional pipeline where the output of each filter feeds directly into the next:
@@ -176,7 +175,7 @@ Sodium’s architecture adheres strictly to proven software engineering patterns
 6. **Generational Handle Pattern (`src/SAT/CDCL/memory.c`)**:
    References to internal memory records use 64-bit compound handles containing an index and a generation counter (`RecordHandle { index, generation }`). Stale handles from deallocated or compacted records are immediately detected, preventing dangling pointer dereferences and ABA resurrection bugs.
 7. **Adapter Pattern**:
-   - The Python `ctypes` bridge in `llm_router.py` adapts Python dictionary payloads into C-compatible memory buffers.
+   - The Python bridge adapts classical pipeline output into C-compatible memory buffers.
    - The Dear ImGui wrapper (`src/InterfaceAndUI/userInterface.cpp`) adapts the C++ immediate-mode GUI lifecycle to the synchronous C API.
 
 ---
@@ -184,7 +183,6 @@ Sodium’s architecture adheres strictly to proven software engineering patterns
 ### 3. Software Engineering Discipline & Quality Assurance
 
 - **Zero-Tolerance Memory Safety**: Every commit is verified using Clang's **AddressSanitizer (ASan)** and **UndefinedBehaviorSanitizer (UBSan)** to ensure zero memory leaks, buffer overruns, or alignment violations.
-- **Pydantic Schema Enforcement**: All communication between the neural layer and the symbolic solver is validated through strict bidirectional Pydantic schemas (`SATProblemSchema` and `SATSolutionSchema`), ensuring malformed or hallucinated LLM responses are rejected before reaching the C engine.
 - **Zero-Allocation Inner Loops**: During active BCP and conflict resolution, Sodium avoids dynamic heap allocations (`malloc`/`free`), operating entirely within pre-allocated arrays and ring buffers.
 
 ---
@@ -199,72 +197,24 @@ Sodium’s architecture adheres strictly to proven software engineering patterns
 | **Contiguous Arenas** | `src/SAT/CDCL/Clauses/` | Flat-array contiguous clause storage, cache-line aligned literal iteration, zero pointer dereferencing overhead. |
 | **Unified C Facade API** | `src/API.c`, `src/API.h` | High-level API for DIMACS parsing, solution verification (`sodium_api_verify_formula`), model extraction. |
 | **Mode 1 JSON SAT API** | `src/SAT/sat_api.c` | CaDiCaL-compatible in-memory JSON interface for programmatic integration with high-level languages. |
-| **Neural LLM Bridge** | `src/NLP/llm_router.py` | Multi-provider router (OpenAI, Ollama, DeepSeek, vLLM), strict Pydantic JSON schema enforcement, bidirectional translation. |
-| **Classical Non-LLM NLP** | `src/NLP/NLPAlgo/` | 7-step deterministic rule & math parser: Tokenization, SVO Parsing, Distance Matching, WordNet, VADER, Static Vectors, CNF Synthesis. |
+| **Classical NLP** | `src/NLP/NLPAlgo/` | 7-step deterministic rule & math parser: Tokenization, SVO Parsing, Distance Matching, WordNet, VADER, Static Vectors, CNF Synthesis. |
 | **Unified Orchestrator** | `src/sodium_orchestrator.c` | Single executable handling CLI arguments, stdin pipes, embedded Web server, and native desktop UI dispatch. |
 | **Interactive Web Studio** | `src/sodium_orchestrator.c` | Embedded HTTPS-ready HTTP daemon, single-page web app, Royal Purple theme, REST API (`/api/v1/solve`, `/api/v1/nlp-solve`). |
 | **Native Desktop UI** | `src/InterfaceAndUI/` | Immediate-mode Dear ImGui desktop window with rule editors, live variable inspection, and verification dashboard. |
 
 ---
 
-## 📖 User Guide: Operating Sodium (LLM vs. Non-LLM)
+## 📖 User Guide: Classical NLP & Math Compiler
 
-Sodium offers two distinct methodologies for converting human requirements and mathematical constraints into formal logic:
+Sodium accepts direct formal solver inputs and natural-language requirements through its deterministic classical pipeline. It does not accept LLM-based work or use generative models to translate requirements.
 
 ```
-                            Choose Your NLP Methodology
-┌──────────────────────────────────────────────┬──────────────────────────────────────────────┐
-│         METHOD A: NEURAL LLM ROUTER          │        METHOD B: CLASSICAL NON-LLM           │
-├──────────────────────────────────────────────┼──────────────────────────────────────────────┤
-│ • Uses generative models (OpenAI, Ollama)    │ • 100% offline, zero external API keys       │
-│ • Best for unstructured, conversational text │ • Best for strict technical & mathematical   │
-│ • Extracts implicit relationships            │   specifications                             │
-│ • Pydantic contract ensures valid output     │ • Deterministic, microsecond latency         │
-│ • Requires API key or local model weights    │ • Complete privacy; runs on any device       │
-└──────────────────────────────────────────────┴──────────────────────────────────────────────┘
+Natural-language requirements are handled by the deterministic 7-step classical pipeline; DIMACS CNF and JSON inputs can be sent directly to the solver.
 ```
 
 ---
 
-### Method A — Neural LLM Reasoning Bridge
-
-The Neural LLM Bridge uses large language models with strict JSON schema constrained decoding.
-
-#### 1. Setup & Environment
-Ensure Python 3.9+ is installed with the required dependencies:
-```bash
-pip install -r requirements.txt
-# Or using the local virtual environment:
-source .venv/bin/activate
-```
-
-Configure your model provider:
-```bash
-# For OpenAI:
-export OPENAI_API_KEY="your-api-key"
-
-# For Local Ollama (default: http://localhost:11434):
-# Ensure Ollama is running: ollama run llama3
-```
-
-#### 2. Command-Line Execution
-```bash
-# Direct translation and solving via Sodium CLI
-./sodium --nlp "Service Alpha and Service Beta cannot run concurrently. Service Alpha must be active."
-
-# Calling the Python router directly
-python3 src/NLP/llm_router.py --engine openai --prompt "If PaymentGateway is enabled, SSL must be active. PaymentGateway is enabled."
-```
-
-#### 3. Interactive Web Studio
-1. Launch the web server: `./sodium --serve --port 8080`
-2. Open `http://localhost:8080` in your browser.
-3. In the **Natural Language Requirements** tab, select **LLM (Neural)** from the engine dropdown.
-4. Enter your scenario and click **Solve Formulation**.
-
----
-
-### Method B — Classical Non-LLM NLP & Math Compiler
+### Classical NLP & Math Compiler
 
 The Classical Non-LLM engine provides a **100% deterministic, offline, and private** reasoning bridge. It uses zero neural weights and requires no API keys, executing a deterministic 7-step linguistic and mathematical compilation pipeline.
 
@@ -408,20 +358,7 @@ Run Sodium using the `--non-llm` flag. No internet connection, API keys, or neur
 
 ---
 
-#### Workflow 2: Neural LLM Reasoning Bridge
-
-If your input is conversational or less structured, use the LLM bridge:
-
-```bash
-export OPENAI_API_KEY="sk-..."
-./sodium --nlp "Ensure PrimaryServer and StandbyServer are mutually exclusive. We need high availability so at least one is up. Maintenance is on, so primary is down." --benchmark
-```
-
-Sodium passes the prompt through Pydantic-enforced structured decoding, generates the CNF matrix, and immediately verifies satisfiability via the C CDCL engine.
-
----
-
-#### Workflow 3: Direct DIMACS CNF Execution
+#### Workflow 2: Direct DIMACS CNF Execution
 
 The identical formal problem can be expressed directly in DIMACS CNF (`server_policy.cnf`):
 
@@ -442,7 +379,7 @@ Solve it from the terminal:
 
 ---
 
-#### Workflow 4: Interactive Web Studio
+#### Workflow 3: Interactive Web Studio
 
 1. Start the server daemon:
    ```bash
@@ -467,7 +404,7 @@ Sodium maintains a persistent, thread-safe action log file (`sodium.log`) tracki
 - **Application Startup & CLI Config**: Process ID, binary path, active arguments, active port/host, and logging destination.
 - **HTTP Server Lifecycle**: Client connections, client IP addresses, socket file descriptors, requested API routes (`/api/v1/dimacs`, `/api/v1/nlp-solve`), and response status codes.
 - **CDCL Solver Internals**: Problem ingestion format, variable count, clause count, Boolean Constraint Propagation (BCP), VSIDS heuristic initialization, solve status (`SATISFIABLE` code 10 vs. `UNSATISFIABLE` code 20), and microsecond solving duration.
-- **NLP Router Execution**: Target engine (`llm` vs `non-llm`), extracted prompt text, subprocess return code, and generated clause counts.
+- **NLP Pipeline Execution**: Classical pipeline activity, extracted prompt text, subprocess return code, and generated clause counts.
 - **Termination**: Captured POSIX signals (`SIGINT`/`SIGTERM`), socket closure, total server uptime, and final exit code.
 
 #### Sample Log Output (`sodium.log`)
@@ -672,7 +609,7 @@ Opens the Royal Purple Dear ImGui desktop studio with the Guided Rule Builder, c
 ```
 Then open **http://localhost:8080** in any browser. Features include:
 - Clean, distraction-free workspace opening directly in **Natural Language (NLP)** mode.
-- Dedicated **Separated Multi-Line Rule Editor** in Non-LLM mode preventing continuous run-on sentences.
+- Dedicated **Separated Multi-Line Rule Editor** for classical NLP requirements, preventing continuous run-on sentences.
 - Standard formal **DIMACS CNF** tab for direct propositional satisfiability solving.
 - Microsecond CDCL solving with verified variable assignment tables.
 - **Cloud Ready**: Deploy behind Nginx/Caddy with SSL for enterprise team access.
@@ -688,10 +625,7 @@ Then open **http://localhost:8080** in any browser. Features include:
 # Pipe a formula directly from stdin
 echo "p cnf 2 2\n1 2 0\n-1 2 0" | ./sodium
 
-# Solve natural language using the LLM engine
-./sodium --nlp "Server A and Server B cannot both be active. Server A is online."
-
-# Solve natural language using the 100% offline Non-LLM classical pipeline
+# Solve natural language using the deterministic classical pipeline
 ./sodium --nlp "If TaskA is running then TaskB must be paused. TaskA is running." --non-llm
 ```
 
@@ -708,8 +642,8 @@ echo "p cnf 2 2\n1 2 0\n-1 2 0" | ./sodium
 | `./sodium --gui` | Launches the native Dear ImGui desktop window |
 | `./sodium --serve --port 8080` | Starts the embedded web studio and REST API at http://localhost:8080 |
 | `./sodium --file <path.cnf>` | Solves a DIMACS CNF problem file |
-| `./sodium --nlp "<text>"` | Solves natural language via Neural LLM router |
-| `./sodium --nlp "<text>" --non-llm` | Solves natural language via Classical 7-step offline pipeline |
+| `./sodium --nlp "<text>"` | Solves natural language via the deterministic Classical 7-step pipeline |
+| `./sodium --nlp "<text>" --non-llm` | Explicitly selects the Classical 7-step pipeline |
 | `./sodium --log <path>` | Specify destination file for action logging (default: sodium.log) |
 | `tail -f sodium.log` | Monitor real-time action logs from startup to shutdown |
 | `./sodium --benchmark` | Displays microsecond telemetry and variable assignment metrics |
@@ -782,7 +716,6 @@ clang -Wall -Wextra -O3 -I src/SAT/CDCL example.c \
 - [x] **Q4 2026**: Generational handle-based memory management with automated compaction (`memory.c`).
 - [x] **Q4 2026**: Contiguous arena `ClauseArray` for zero-pointer-overhead clause storage.
 - [x] **Q4 2026**: Mode 1 JSON SAT API (`sat_api.c`) — CaDiCaL-compatible in-memory solver interface.
-- [x] **Q4 2026**: Neural LLM reasoning bridge (`llm_router.py`) — Pydantic-enforced bidirectional LLM schema routing.
 - [x] **Q4 2026**: Classical Non-LLM 7-Step NLP & Math compiler (`src/NLP/NLPAlgo/`).
 - [x] **Q4 2026**: Unified system orchestrator (`sodium_orchestrator.c`) — single binary for desktop UI, web server, and CLI.
 - [x] **Q4 2026**: Embedded HTTPS-ready web studio with interactive CDCL solver, REST API, and Royal Purple UI.
