@@ -397,9 +397,8 @@ static JsonValue* json_object_get(const JsonValue* obj, const char* key) {
 
 struct SodiumSolver {
     CDCLSolver  cdcl;
-    Clause**    clauses;
+    ClauseArray base_arena;
     size_t      clause_count;
-    size_t      clause_capacity;
 
     int*        current_clause;
     size_t      current_clause_len;
@@ -418,12 +417,12 @@ struct SodiumSolver {
 
     int         max_variable;
     int         last_status;
+    bool        has_empty_clause;
 };
 
 SodiumSolver* sodium_solver_create(void) {
     SodiumSolver* s = (SodiumSolver*)calloc(1, sizeof(SodiumSolver));
-    s->clause_capacity = 64;
-    s->clauses = (Clause**)malloc(s->clause_capacity * sizeof(Clause*));
+    clause_array_init(&s->base_arena, 0);
 
     s->current_clause_cap = 16;
     s->current_clause = (int*)malloc(s->current_clause_cap * sizeof(int));
@@ -441,13 +440,9 @@ SodiumSolver* sodium_solver_create(void) {
 void sodium_solver_destroy(SodiumSolver* s) {
     if (!s) return;
 
-    for (size_t i = 0; i < s->clause_count; i++) {
-        if (s->clauses[i]) {
-            if (s->clauses[i]->literals) free(s->clauses[i]->literals);
-            free(s->clauses[i]);
-        }
-    }
-    if (s->clauses) free(s->clauses);
+    clause_array_destroy(&s->base_arena);
+    DESTROY_SOLVER(&s->cdcl);
+
     if (s->current_clause) free(s->current_clause);
     if (s->assumptions) free(s->assumptions);
     if (s->failed_core) free(s->failed_core);
@@ -461,22 +456,12 @@ void sodium_solver_add_literal(SodiumSolver* s, int lit) {
 
     if (lit == 0) {
         if (s->current_clause_len == 0) {
+            s->has_empty_clause = true;
             return;
         }
 
-        Clause* c = (Clause*)malloc(sizeof(Clause));
-        c->size = (int)s->current_clause_len;
-        c->literals = (int*)malloc(c->size * sizeof(int));
-        memcpy(c->literals, s->current_clause, c->size * sizeof(int));
-        c->is_learned = false;
-        c->activity = 0.0;
-        c->is_deleted = false;
-
-        if (s->clause_count >= s->clause_capacity) {
-            s->clause_capacity *= 2;
-            s->clauses = (Clause**)realloc(s->clauses, s->clause_capacity * sizeof(Clause*));
-        }
-        s->clauses[s->clause_count++] = c;
+        clause_array_allocate(&s->base_arena, s->current_clause, (int)s->current_clause_len, false, 0.0f);
+        s->clause_count++;
         s->current_clause_len = 0;
     } else {
         int v = abs(lit);
@@ -528,30 +513,34 @@ int sodium_solver_solve(SodiumSolver* s) {
         sodium_solver_add_literal(s, 0);
     }
 
-    size_t total_effective_clauses = s->clause_count + s->assumption_count;
-    Clause** all_clauses = (Clause**)malloc((total_effective_clauses > 0 ? total_effective_clauses : 1) * sizeof(Clause*));
-
-    // Copy permanent clauses
-    for (size_t i = 0; i < s->clause_count; i++) {
-        all_clauses[i] = s->clauses[i];
-    }
-
-    // Append assumption unit clauses
-    for (size_t i = 0; i < s->assumption_count; i++) {
-        Clause* uc = (Clause*)malloc(sizeof(Clause));
-        uc->size = 1;
-        uc->literals = (int*)malloc(sizeof(int));
-        uc->literals[0] = s->assumptions[i];
-        uc->is_learned = false;
-        uc->activity = 0.0;
-        uc->is_deleted = false;
-        all_clauses[s->clause_count + i] = uc;
+    if (s->has_empty_clause) {
+        s->last_status = SODIUM_STATUS_UNSATISFIABLE;
+        return s->last_status;
     }
 
     int var_count = s->max_variable > 0 ? s->max_variable : 1;
 
-    // Execute CDCL search loop
-    SolverMode mode = SOLVE(&s->cdcl, var_count, all_clauses, (int)total_effective_clauses);
+    // Destroy previous CDCL search state
+    DESTROY_SOLVER(&s->cdcl);
+
+    // Initialize s->cdcl.arena and clone base_arena words
+    size_t needed_words = s->base_arena.used_words + s->assumption_count * 3 + 16;
+    clause_array_init(&s->cdcl.arena, needed_words);
+    if (s->base_arena.used_words > 1) {
+        memcpy(s->cdcl.arena.memory, s->base_arena.memory, s->base_arena.used_words * sizeof(uint32_t));
+        s->cdcl.arena.used_words = s->base_arena.used_words;
+        s->cdcl.arena.clause_count = s->base_arena.clause_count;
+        s->cdcl.arena.learned_count = s->base_arena.learned_count;
+    }
+
+    // Append assumption unit clauses directly into s->cdcl.arena
+    for (size_t i = 0; i < s->assumption_count; i++) {
+        int a_lit = s->assumptions[i];
+        clause_array_allocate(&s->cdcl.arena, &a_lit, 1, false, 0.0f);
+    }
+
+    // Execute CDCL search loop directly from arena
+    SolverMode mode = SOLVE_ARENA(&s->cdcl, var_count);
 
     // CaDiCaL convention: 10 = SAT, 20 = UNSAT, 0 = UNKNOWN
     if (mode == SAT) {
@@ -588,19 +577,6 @@ int sodium_solver_solve(SodiumSolver* s) {
     } else {
         s->last_status = SODIUM_STATUS_UNKNOWN;
     }
-
-    // Clean up CDCL state before releasing assumption clauses (CDCL references all_clauses)
-    DESTROY_SOLVER(&s->cdcl);
-
-    // Free temporary assumption clauses after DESTROY_SOLVER has safely finished
-    for (size_t i = 0; i < s->assumption_count; i++) {
-        Clause* uc = all_clauses[s->clause_count + i];
-        if (uc) {
-            if (uc->literals) free(uc->literals);
-            free(uc);
-        }
-    }
-    free(all_clauses);
 
     return s->last_status;
 }

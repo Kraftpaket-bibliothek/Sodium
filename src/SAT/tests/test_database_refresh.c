@@ -5,17 +5,6 @@
  * activity, deletion of the lowest-activity half, protection of reason / unit /
  * original clauses, watchlist detachment, database compaction, and conflict
  * threshold updates.
- *
- * Tests
- * -----
- * 6.1  refresh_deletes_half_candidates        – 10 learned clauses → 5 deleted
- * 6.2  refresh_keeps_reason_clauses           – reason clauses never deleted
- * 6.3  refresh_keeps_original_clauses         – original clauses untouched
- * 6.4  refresh_keeps_unit_learned_clauses     – unit learned clauses preserved
- * 6.5  refresh_removes_from_watchlist         – deleted clauses unlinked from 2-WL
- * 6.6  refresh_deletes_lowest_activity        – lowest-activity clauses targeted
- * 6.7  refresh_updates_next_refresh_conflict  – interval schedule recalculated
- * 6.8  refresh_compacts_clause_array          – no NULL gaps in clause array
  */
 
 #include "test_harness.h"
@@ -27,14 +16,16 @@ extern bool IS_DATABASE_REFRESH_DUE(const CDCLSolver* solver);
 /**
  * Helper to register a learned clause into the solver's database and watch lists.
  */
-static void add_learned_clause(CDCLSolver* solver, Clause* c) {
+static ClauseRef add_learned_clause(CDCLSolver* solver, const int* lits, int size, double activity) {
+    ClauseRef ref = clause_array_allocate(&solver->arena, lits, size, true, (float)activity);
     if (solver->clause_count >= solver->clause_capacity) {
         solver->clause_capacity = (solver->clause_capacity == 0) ? 16 : solver->clause_capacity * 2;
-        solver->clauses = (Clause**)realloc(solver->clauses, solver->clause_capacity * sizeof(Clause*));
+        solver->clauses = (ClauseRef*)realloc(solver->clauses, solver->clause_capacity * sizeof(ClauseRef));
     }
-    solver->clauses[solver->clause_count++] = c;
+    solver->clauses[solver->clause_count++] = ref;
     solver->learned_clause_count++;
-    ATTACH_CLAUSE(solver, c);
+    ATTACH_CLAUSE(solver, ref);
+    return ref;
 }
 
 /* ── 6.1 ── */
@@ -46,9 +37,7 @@ static void refresh_deletes_half_candidates(void) {
     /* Add 10 2-literal learned clauses with distinct activities */
     for (int i = 1; i <= 10; i++) {
         int lits[2] = {i, (i % 10) + 1};
-        Clause* c = make_clause(lits, 2, true);
-        c->activity = (double)i;
-        add_learned_clause(&solver, c);
+        add_learned_clause(&solver, lits, 2, (double)i);
     }
 
     TEST_ASSERT(solver.clause_count == 10, "should have 10 clauses before refresh");
@@ -72,21 +61,15 @@ static void refresh_keeps_reason_clauses(void) {
 
     /* Clause 1: will be marked as a reason for variable 1 */
     int lits1[2] = {1, 2};
-    Clause* c1 = make_clause(lits1, 2, true);
-    c1->activity = 0.1; /* lowest activity, would normally be deleted first */
-    add_learned_clause(&solver, c1);
+    ClauseRef c1 = add_learned_clause(&solver, lits1, 2, 0.1);
 
     /* Clause 2: unreferenced, activity 1.0 */
     int lits2[2] = {2, 3};
-    Clause* c2 = make_clause(lits2, 2, true);
-    c2->activity = 1.0;
-    add_learned_clause(&solver, c2);
+    add_learned_clause(&solver, lits2, 2, 1.0);
 
     /* Clause 3: unreferenced, activity 2.0 */
     int lits3[2] = {3, 4};
-    Clause* c3 = make_clause(lits3, 2, true);
-    c3->activity = 2.0;
-    add_learned_clause(&solver, c3);
+    add_learned_clause(&solver, lits3, 2, 2.0);
 
     /* Assign variable 1 and set c1 as its reason */
     solver.assignment[1] = TRUE;
@@ -118,12 +101,12 @@ static void refresh_keeps_original_clauses(void) {
     int rc = make_solver(&solver, 6, input_clauses, 1);
     TEST_ASSERT(rc == 0, "make_solver failed");
 
+    ClauseRef orig_ref = solver.clauses[0];
+
     /* Add 4 learned clauses */
     for (int i = 1; i <= 4; i++) {
         int lits[2] = {i + 1, i + 2};
-        Clause* c = make_clause(lits, 2, true);
-        c->activity = (double)i;
-        add_learned_clause(&solver, c);
+        add_learned_clause(&solver, lits, 2, (double)i);
     }
 
     TEST_ASSERT(solver.clause_count == 5, "total 5 clauses initially (1 orig + 4 learned)");
@@ -135,7 +118,7 @@ static void refresh_keeps_original_clauses(void) {
 
     bool orig_found = false;
     for (int i = 0; i < solver.clause_count; i++) {
-        if (solver.clauses[i] == orig) orig_found = true;
+        if (solver.clauses[i] == orig_ref) orig_found = true;
     }
     TEST_ASSERT(orig_found, "original clause must be preserved");
 
@@ -151,20 +134,14 @@ static void refresh_keeps_unit_learned_clauses(void) {
 
     /* Unit learned clause */
     int unit_lit[1] = {1};
-    Clause* unit_c = make_clause(unit_lit, 1, true);
-    unit_c->activity = 0.01; /* lowest activity */
-    add_learned_clause(&solver, unit_c);
+    ClauseRef unit_c = add_learned_clause(&solver, unit_lit, 1, 0.01);
 
     /* Two binary learned clauses */
     int lits2[2] = {2, 3};
-    Clause* c2 = make_clause(lits2, 2, true);
-    c2->activity = 1.0;
-    add_learned_clause(&solver, c2);
+    add_learned_clause(&solver, lits2, 2, 1.0);
 
     int lits3[2] = {4, 5};
-    Clause* c3 = make_clause(lits3, 2, true);
-    c3->activity = 2.0;
-    add_learned_clause(&solver, c3);
+    add_learned_clause(&solver, lits3, 2, 2.0);
 
     /* Candidates are c2 and c3 (unit_c has size <= 1 so ignored).
      * to_delete = 2 / 2 = 1.
@@ -188,26 +165,22 @@ static void refresh_removes_from_watchlist(void) {
 
     /* Clause to be deleted (low activity) */
     int lits_del[2] = {1, 2};
-    Clause* c_del = make_clause(lits_del, 2, true);
-    c_del->activity = 1.0;
-    add_learned_clause(&solver, c_del);
+    ClauseRef c_del = add_learned_clause(&solver, lits_del, 2, 1.0);
 
     /* Clause to be kept (higher activity) */
     int lits_keep[2] = {3, 4};
-    Clause* c_keep = make_clause(lits_keep, 2, true);
-    c_keep->activity = 10.0;
-    add_learned_clause(&solver, c_keep);
+    add_learned_clause(&solver, lits_keep, 2, 10.0);
 
     size_t idx1 = LIT_TO_INDEX(1, solver.number_of_variables);
     size_t idx2 = LIT_TO_INDEX(2, solver.number_of_variables);
 
     /* Verify c_del is in watch lists for literal 1 and 2 */
     bool in_watch1 = false, in_watch2 = false;
-    for (int i = 0; i < solver.watch_list_sizes[idx1]; i++) {
-        if (solver.watch_lists[idx1][i] == c_del) in_watch1 = true;
+    for (uint32_t i = 0; i < solver.watch_lists[idx1].size; i++) {
+        if (solver.watch_lists[idx1].watchers[i].clause_ref == c_del) in_watch1 = true;
     }
-    for (int i = 0; i < solver.watch_list_sizes[idx2]; i++) {
-        if (solver.watch_lists[idx2][i] == c_del) in_watch2 = true;
+    for (uint32_t i = 0; i < solver.watch_lists[idx2].size; i++) {
+        if (solver.watch_lists[idx2].watchers[i].clause_ref == c_del) in_watch2 = true;
     }
     TEST_ASSERT(in_watch1 && in_watch2, "c_del must be watched initially");
 
@@ -217,11 +190,11 @@ static void refresh_removes_from_watchlist(void) {
     /* Verify c_del is removed from watch lists */
     in_watch1 = false;
     in_watch2 = false;
-    for (int i = 0; i < solver.watch_list_sizes[idx1]; i++) {
-        if (solver.watch_lists[idx1][i] == c_del) in_watch1 = true;
+    for (uint32_t i = 0; i < solver.watch_lists[idx1].size; i++) {
+        if (solver.watch_lists[idx1].watchers[i].clause_ref == c_del) in_watch1 = true;
     }
-    for (int i = 0; i < solver.watch_list_sizes[idx2]; i++) {
-        if (solver.watch_lists[idx2][i] == c_del) in_watch2 = true;
+    for (uint32_t i = 0; i < solver.watch_lists[idx2].size; i++) {
+        if (solver.watch_lists[idx2].watchers[i].clause_ref == c_del) in_watch2 = true;
     }
     TEST_ASSERT(!in_watch1, "c_del must be removed from watch_lists[idx1]");
     TEST_ASSERT(!in_watch2, "c_del must be removed from watch_lists[idx2]");
@@ -238,23 +211,21 @@ static void refresh_deletes_lowest_activity(void) {
     /* Create 4 clauses with activities 5.0, 1.0, 8.0, 2.0 */
     int l[4][2] = {{1, 2}, {3, 4}, {5, 6}, {7, 8}};
     double acts[4] = {5.0, 1.0, 8.0, 2.0};
-    Clause* cs[4];
 
     for (int i = 0; i < 4; i++) {
-        cs[i] = make_clause(l[i], 2, true);
-        cs[i]->activity = acts[i];
-        add_learned_clause(&solver, cs[i]);
+        add_learned_clause(&solver, l[i], 2, acts[i]);
     }
 
-    /* 4 candidates -> delete 2 lowest: cs[1] (1.0) and cs[3] (2.0) */
+    /* 4 candidates -> delete 2 lowest: 1.0 and 2.0 */
     REFRESH_CLAUSE_DATABASE(&solver);
 
     TEST_ASSERT(solver.clause_count == 2, "2 clauses should remain");
 
     bool kept_5 = false, kept_8 = false;
     for (int i = 0; i < solver.clause_count; i++) {
-        if (solver.clauses[i]->activity == 5.0) kept_5 = true;
-        if (solver.clauses[i]->activity == 8.0) kept_8 = true;
+        float act = clause_array_get_activity(&solver.arena, solver.clauses[i]);
+        if (act == 5.0f) kept_5 = true;
+        if (act == 8.0f) kept_8 = true;
     }
 
     TEST_ASSERT(kept_5, "clause with activity 5.0 should be preserved");
@@ -299,17 +270,16 @@ static void refresh_compacts_clause_array(void) {
 
     for (int i = 0; i < 4; i++) {
         int lits[2] = {i * 2 + 1, i * 2 + 2};
-        Clause* c = make_clause(lits, 2, true);
-        c->activity = (double)(i + 1);
-        add_learned_clause(&solver, c);
+        add_learned_clause(&solver, lits, 2, (double)(i + 1));
     }
 
     REFRESH_CLAUSE_DATABASE(&solver);
 
     TEST_ASSERT(solver.clause_count == 2, "clause_count should be compacted to 2");
+    TEST_ASSERT(solver.arena.wasted_words == 0, "wasted_words must be 0 after physical sliding compaction");
     for (int i = 0; i < solver.clause_count; i++) {
-        TEST_ASSERT(solver.clauses[i] != NULL, "clauses array must have no NULL slots");
-        TEST_ASSERT(!solver.clauses[i]->is_deleted, "compacted clauses must not be marked deleted");
+        TEST_ASSERT(solver.clauses[i] != CLAUSE_REF_NULL, "clauses array must have no NULL slots");
+        TEST_ASSERT(!clause_array_is_deleted(&solver.arena, solver.clauses[i]), "compacted clauses must not be marked deleted");
     }
 
     DESTROY_SOLVER(&solver);

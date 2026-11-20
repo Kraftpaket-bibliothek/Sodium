@@ -15,6 +15,7 @@ echo " Running All CDCL Tests Sequentially (T0 -> T7)..."
 echo "=================================================="
 
 TESTS=(
+    "test_clause_array"
     "test_memory_allocation"
     "test_enqueue_trail"
     "test_propagate"
