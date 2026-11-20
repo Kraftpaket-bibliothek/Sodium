@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/lexicon_scoring/polarity_scorer.py
 # Description: VADER-aligned requirement polarity and constraint intensity scoring.
 # ============================================================================

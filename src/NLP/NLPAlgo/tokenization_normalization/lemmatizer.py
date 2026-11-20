@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/tokenization_normalization/lemmatizer.py
 # Description: Morphological lemmatizer and contraction normalizer.
 # ============================================================================

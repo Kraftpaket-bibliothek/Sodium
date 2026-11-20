@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/knowledge_injection/wordnet_synsets.py
 # Description: WordNet synset and hypernym knowledge injection for logic concepts.
 # ============================================================================

@@ -1,85 +1,30 @@
-This will use the SAT code as the core and then build on it for solving complex problem.
+# Classical NLP to CNF
 
-Pseudo code of the Advanced CDCL with VSIDS:
+Sodium's natural-language entry point is a deterministic, local pipeline. It accepts controlled logical statements supported by the parser; it does not provide unrestricted language understanding. Unsupported constructions return a stage-specific error.
 
-FUNCTION InitializeSolver(CNF_Formula)
-    // 1. Initialize all variables: Unassigned, Assigned, or False (depending on the structure)
-    FOR each variable V in CNF_Formula DO
-        V.Assignment = UNASSIGNED
-        V.VSIDS_Score = 0 // Initialize score for all variables
-    END FOR
+## Compilation flow
 
-    // 2. Initialize the Decision Stack (to track choices)
-    DecisionStack = []
+`ClassicalNLPPipeline.compile_text()` performs these steps:
 
-    // 3. Initialize the Clause Database (where clauses are stored)
-    ClauseDatabase = []
+1. Shields mathematical expressions and splits the input into rules.
+2. Normalizes contractions and tokenizes logical operators and propositions.
+3. Parses the supported grammar into a logical expression tree.
+4. Resolves proposition names to stable, deterministic variable IDs.
+5. Converts the expression trees to CNF, including auxiliary variables where required.
+6. Validates the result against `SodiumCNFRequest`, the shared JSON contract.
 
-    // 4. Initialize the Conflict Database (for tracking history)
-    ConflictHistory = []
+`ClassicalNLPPipeline.solve()` passes only a validated request to the existing C CDCL solver through `SodiumExecutionBridge`.
 
-    RETURN SolverInstance
-END FUNCTION
+## Run it
 
+Compile natural-language rules to JSON:
 
-FUNCTION Solve(Formula)
-    Solver = InitializeSolver(Formula)
+```sh
+python3 -m src.NLP.NLPAlgo.classical_pipeline \
+  --text "If the engine is running then the battery is connected." \
+  --output request.json
+```
 
-    WHILE (Solver.IsSatisfied() == FALSE AND Solver.HasConflicts()) DO
-        // --- PHASE A: Propagation (Deduction) ---
-        ConflictFound = FALSE
-        WHILE (True) DO // Loop until no more unit clauses can be found
-            UnitClause = FindUnitClause(Solver.Clauses)
+To compile and solve using the C solver bridge, add `--solve`. The main application also exposes this pipeline through `./sodium --nlp "<rules>"` and its web interface.
 
-            IF (UnitClause IS NOT NULL) THEN
-                LiteralToAssign = UnitClause.UnassignedLiteral
-                AssignmentValue = DetermineValue(UnitClause) // e.g., must be TRUE
-
-                // Apply the deduction
-                ApplyAssignment(LiteralToAssign, AssignmentValue)
-
-            ELSE
-                BREAK // No more deductions possible in this iteration
-            END IF
-        END WHILE
-
-        // Check for immediate contradiction after propagation
-        IF (Solver.IsContradictory()) THEN
-            ConflictFound = TRUE
-            BREAK // Go to Conflict Resolution immediately
-        END IF
-
-    END WHILE
-
-    // --- PHASE B: Decision Point (If no conflicts found yet) ---
-    IF (Solver.IsSatisfied()) THEN
-        RETURN Solver.CurrentAssignment // SUCCESS!
-    ELSE IF (Solver.IsUnresolved()) THEN
-        // If propagation stabilized but formula is not solved, make a guess (Decision)
-        
-        // *** VSIDS HEURISTIC APPLIED HERE ***
-        ChosenVariable = SelectVariableBasedOnVSIDS(Solver.UnassignedVariables) 
-        
-        // Make the decision (e.g., choose TRUE for the variable)
-        DecisionStack.push({Variable: ChosenVariable, Value: TRUE}) 
-
-    ELSE // No decisions left and still not satisfied
-        BREAK // Should not happen if logic is perfect, but acts as a safety break
-    END IF
-
-    // --- PHASE C: Backtracking and Learning (If Conflict occurred) ---
-    IF (ConflictFound) THEN
-        // 1. Record the conflict details
-        ConflictRecord = RecordConflict(Solver.CurrentState, ConflictDetails)
-        ConflictHistory.push(ConflictRecord)
-
-        // 2. Learn a new clause to prevent this conflict later
-        LearnedClause = GenerateClauseFromConflict(ConflictRecord)
-        Solver.Clauses.add(LearnedClause)
-
-        // 3. Backtrack to a previous decision point
-        Solver.BacktrackToLastDecision()
-
-    END IF
-
-END FUNCTION
+The pipeline requires Python and Pydantic for the CNF contract. Install the declared Python dependency from the repository root with `python3 -m pip install -r requirements.txt`. Its tokenizer, parser, resolution, and compiler use local deterministic code. `RulePOSTagger` has an optional NLTK implementation with an internal rule-based fallback, but the controlled-language compiler's parser does not require NLTK.

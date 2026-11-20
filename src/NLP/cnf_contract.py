@@ -110,7 +110,7 @@ class SodiumCNFRequest(BaseModel):
                     raise ValueError(f"Clause at index {idx} cannot be empty.")
 
                 c = list(clause)
-                # Auto-append terminal 0 if omitted by LLM
+                # Normalize clauses by appending the DIMACS terminator when omitted.
                 if c[-1] != 0:
                     c.append(0)
 

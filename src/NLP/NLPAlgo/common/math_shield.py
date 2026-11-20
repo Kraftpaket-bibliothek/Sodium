@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/common/math_shield.py
 # Description: Mathematical symbol preservation and algebraic equation shielding.
 #              Protects math equations, relational inequalities, and logic symbols

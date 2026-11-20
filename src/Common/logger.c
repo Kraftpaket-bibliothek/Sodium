@@ -139,10 +139,15 @@ void logger_flush(void) {
 }
 
 void logger_shutdown(void) {
-    lock_logger();
+    // logger_log acquires g_log_mutex itself, so emit the final records before
+    // taking the mutex used to flush and close the file.
     if (g_initialized && g_log_file) {
         LOG_INFO("CORE", "Sodium Session Terminated Cleanly.");
         LOG_INFO("CORE", "================================================================================");
+    }
+
+    lock_logger();
+    if (g_initialized && g_log_file) {
         fflush(g_log_file);
         fclose(g_log_file);
         g_log_file = NULL;

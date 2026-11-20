@@ -913,6 +913,9 @@ int main(int argc, char** argv) {
             nlp_prompt = argv[++i];
         } else if ((strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--log") == 0) && i + 1 < argc) {
             i++; // already handled in pre-scan
+        } else {
+            fprintf(stderr, "Error: Unsupported or incomplete option '%s'. Use --help to see supported options.\n", argv[i]);
+            return 2;
         }
     }
 

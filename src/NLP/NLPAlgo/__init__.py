@@ -1,6 +1,6 @@
 # ============================================================================
 # Sodium - Automated Reasoning & Neuro-Symbolic Verification Engine
-# Feature: Classical Non-LLM NLP Methodology
+# Feature: Deterministic Classical NLP Methodology
 # Package: src.NLP.NLPAlgo
 # ============================================================================
 

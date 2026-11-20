@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/lexicon_scoring/textrank_extractor.py
 # Description: Graph-based TextRank keyphrase and entity centrality extraction.
 # ============================================================================

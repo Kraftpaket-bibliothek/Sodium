@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/static_vectorization/static_embeddings.py
 # Description: Zero-GPU static word vector lookup and deterministic feature hashing.
 # ============================================================================

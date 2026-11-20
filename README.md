@@ -39,46 +39,39 @@
 
 High-stakes industries—aerospace, defense, chip design, fintech, and supply chain logistics—run on **unstructured human language**: SLA contracts, regulatory compliance codes, engineering requirements, and operational objectives.
 
-Until now, enterprises had two deeply flawed choices:
-1. **Manual Formal Verification**: Requires specialized PhDs, takes months of human labor, and costs millions.
-2. **Probabilistic Large Language Models (LLMs)**: Sodium does not accept LLM-based work; its reasoning workflow is deterministic and symbolic.
+Formal verification tools can be difficult to connect to requirements written in controlled natural language. Sodium provides a deterministic translation path for supported statements, alongside direct symbolic input for users who already have a CNF formula.
 
-**Sodium is an industrial automated reasoning engine that closes this gap.** It ingests complex natural language requirements, mathematical equations, and business rules, extracting hard constraints and compiling them directly into a custom-engineered, ultra-low-latency **CDCL (Conflict-Driven Clause Learning) and SMT (Satisfiability Modulo Theories) engine**. 
+**Sodium is an automated reasoning engine for Boolean constraints.** Its controlled-language pipeline compiles supported statements into validated CNF, then sends the formula to the native **CDCL (Conflict-Driven Clause Learning) SAT solver**. DIMACS and JSON CNF can also be supplied directly.
 
-Sodium does not guess. It **proves**—synthesizing and presenting the verifiable, plausible, and mathematically guaranteed satisfiable assignment.
+The solver reports whether the formula is satisfiable and returns an assignment when one exists. Natural-language conversion is limited to the deterministic rules implemented by the classical NLP pipeline.
 
 ---
 
 ## 💡 Why Sodium?
 
-```
-                        The Enterprise Verification Dilemma
-   
-   Human Language Specs              Probabilistic AI                    Sodium Solver
-+------------------------+      +------------------------+      +-----------------------------+
-| • Complex SLA rules    |      | • Fast & accessible    |      | • Natural Language Interface|
-| • Safety requirements  | ---> | • Hallucinates outputs | ---> | • 100% Deterministic Proof  |
-| • Operational goals    |      | • Fails under edge case|      | • Microsecond C Engine      |
-| • Regulatory laws      |      | • ZERO formal guarantee|      | • Concrete Satisfiable Model|
-+------------------------+      +------------------------+      +-----------------------------+
-                                       (UNUSABLE IN                     (MISSION-CRITICAL
-                                    MISSION-CRITICAL)                      ENTERPRISE)
-```
+Sodium supports direct symbolic formulas as well as a deterministic compiler for its supported controlled-language constructs. The solver then evaluates the resulting Boolean constraints and returns a satisfying assignment or an unsatisfiable status.
 
-| Dimension | Generic LLMs | Traditional SMT Solvers (Z3, CVC5) | **Sodium** |
-| :--- | :--- | :--- | :--- |
-| **Input Modality** | Natural Language | Raw SMT-LIB2 / DIMACS CNF | **Natural Language + Math + DIMACS** |
-| **Mathematical Soundness** | ❌ None (Stochastic) | ✅ 100% Provable | **✅ 100% Provable** |
-| **Output Interpretation** | Probabilistic text | Abstract Boolean Models | **Plausible, Concrete Satisfying Model** |
-| **Reasoning Method** | Cloud API (Stochastic) | Pure Solvers (No NLP) | **Classical NLP + CDCL** |
-| **Latency & Overhead** | Seconds (API dependent) | Heavy dynamic heaps | **Microsecond Native C (Zero-overhead)** |
-| **Memory Architecture** | Cloud GPUs | Standard Heap (GC pauses) | **Custom Generational Memory + Compaction** |
+| Input mode | How it is handled |
+| :--- | :--- |
+| DIMACS CNF | Parsed and solved by the native CDCL solver. |
+| JSON CNF | Validated against the Sodium CNF contract and solved by the native CDCL solver. |
+| Controlled natural language | Processed by deterministic tokenization, parsing, entity resolution, and CNF compilation before solving. |
 
 ---
 
 ## 🏛 System Architecture & Engineering Principles
 
 Sodium is engineered from the bare metal up in **C11**, decoupling semantic translation from high-performance formal proof search.
+
+### Supported execution modes
+
+- **DIMACS CNF**: pass a formula with `--dimacs`, provide a `.cnf` file with `--file`, or pipe a DIMACS formula to standard input.
+- **JSON CNF**: pass a CNF request with `--json` or provide a JSON request file with `--file`.
+- **Classical NLP**: pass supported controlled-language rules with `--nlp`. The deterministic Python pipeline validates the generated CNF before the C solver receives it.
+- **Desktop GUI**: launch the native interface with `--gui` in a GUI-enabled build.
+- **Headless and server**: use the CLI directly or start the embedded HTTP server with `--serve`; the server exposes JSON CNF, DIMACS, and classical NLP endpoints.
+
+The active controlled-language compiler performs normalization and math shielding, logical tokenization, dependency parsing, exact proposition resolution, CNF synthesis, variable allocation, and CNF contract validation. The repository also retains deterministic POS-tagging, entity-pattern, lexicon-scoring, and vector-aggregation utilities; these are not currently on the compiler's execution path. No external service or credentials are required.
 
 ```
 +--------------------------------------------------------------------------------------------------+
@@ -320,7 +313,7 @@ Sodium maintains a persistent, thread-safe action log file (`sodium.log`) tracki
 - **Application Startup & CLI Config**: Process ID, binary path, active arguments, active port/host, and logging destination.
 - **HTTP Server Lifecycle**: Client connections, client IP addresses, socket file descriptors, requested API routes (`/api/v1/dimacs`, `/api/v1/nlp-solve`), and response status codes.
 - **CDCL Solver Internals**: Problem ingestion format, variable count, clause count, Boolean Constraint Propagation (BCP), VSIDS heuristic initialization, solve status (`SATISFIABLE` code 10 vs. `UNSATISFIABLE` code 20), and microsecond solving duration.
-- **NLP Pipeline Execution**: Classical pipeline activity, extracted prompt text, subprocess return code, and generated clause counts.
+- **NLP Pipeline Execution**: Classical pipeline activity, submitted natural-language text, subprocess return code, and generated clause counts.
 - **Termination**: Captured POSIX signals (`SIGINT`/`SIGTERM`), socket closure, total server uptime, and final exit code.
 
 #### Sample Log Output (`sodium.log`)
@@ -469,7 +462,7 @@ In the spirit of honest engineering and transparent technical governance, the fo
 
 ### 6. Desktop GUI Window Dependencies
 - **Status**: Full GUI builds require GLFW and OpenGL libraries on the host system.
-- **Mitigation**: Sodium provides `make server`, producing a pure C11 headless binary that includes the embedded Web Studio and REST API with zero external dependencies.
+- **Mitigation**: Sodium provides `make server`, producing the C11 headless binary with no GUI libraries. The binary itself builds with a C toolchain; its classical NLP mode additionally requires Python and Pydantic.
 
 ---
 
@@ -499,13 +492,13 @@ make deps
 make
 ```
 
-#### Option B — Headless Build (Web Server + CLI only, Zero Dependencies)
+#### Option B — Headless Build (Web Server + CLI, no GUI libraries)
 If you want to use the Web Studio or the CLI without installing GLFW or GUI libraries:
 
 ```bash
 make server
 ```
-*Requires only a standard C11 compiler (Clang/GCC). Zero external dependencies.*
+*The native binary requires a standard C11 compiler (Clang/GCC) and no GUI libraries. To use natural-language mode, install Python 3 and the Python dependency with `python3 -m pip install -r requirements.txt`.*
 
 ---
 
@@ -553,7 +546,7 @@ echo "p cnf 2 2\n1 2 0\n-1 2 0" | ./sodium
 | :--- | :--- |
 | `make deps` | Downloads Dear ImGui & installs GLFW (one-time setup for Desktop GUI) |
 | `make` | Full build: Desktop GUI + Web Server + CLI binary (`./sodium`) |
-| `make server` | Headless build: Zero-dependency Web Server + CLI binary (`./sodium`) |
+| `make server` | Headless build: Web Server + CLI binary (`./sodium`), without GUI libraries |
 | `make clean` | Removes compiled binaries and build artifacts |
 | `./sodium --gui` | Launches the native Dear ImGui desktop window |
 | `./sodium --serve --port 8080` | Starts the embedded web studio and REST API at http://localhost:8080 |
@@ -641,7 +634,7 @@ clang -Wall -Wextra -O3 -I src/SAT/CDCL example.c \
   - Theory of Bit-Vectors (BV) for hardware and software systems.
   - Theory of Arrays & Uninterpreted Functions (Arrays / UF).
 - [ ] **Q3 2027**: Multi-threaded parallel portfolio SAT solving with shared learned-clause pools.
-- [ ] **Q4 2027**: Enterprise Distributed Reasoning Cloud API & Verification Co-Pilot.
+- [ ] **Q4 2027**: Distributed verification API.
 
 ---
 
@@ -652,7 +645,7 @@ Sodium is licensed under the **[Apache License 2.0](LICENSE)**.
 ---
 
 <div align="center">
-<b>Sodium is being built because I was fed up of AI Hallucinating and giving me "NA" errors in everyday decisions based on requirements, in production.</b>
+<b>Sodium is being built to make Boolean constraint solving accessible through a native SAT engine and a deterministic classical NLP pipeline.</b>
 <br/>
 <sub>Designed & engineered by Aditya.</sub>
 </div>

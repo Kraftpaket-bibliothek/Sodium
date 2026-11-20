@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/common/logic_types.py
 # Description: Core domain models, enums, and AST representations for
 #              synthesizing propositional logic from natural language & math.
