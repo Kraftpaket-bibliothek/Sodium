@@ -14,6 +14,8 @@ TESTS = test_clause_array \
         test_database_refresh \
         test_solve_integration \
         test_benchmarks \
+        test_electronic_board \
+        test_zebra_puzzle \
         test_10m_clauses
 
 .PHONY: all run clean
