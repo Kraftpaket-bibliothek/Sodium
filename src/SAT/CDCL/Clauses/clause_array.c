@@ -1,13 +1,3 @@
-/**
- * ============================================================================
- * Sodium - Automated Reasoning & Neuro-Symbolic Verification Engine
- * Module: SAT / CDCL / Clauses
- * File: src/SAT/CDCL/Clauses/clause_array.c
- * Description: Implementation of contiguous clause arena storage, watcher lists,
- *              and in-place sliding compaction.
- * ============================================================================
- */
-
 #include "clause_array.h"
 #include <stdlib.h>
 #include <stdio.h>

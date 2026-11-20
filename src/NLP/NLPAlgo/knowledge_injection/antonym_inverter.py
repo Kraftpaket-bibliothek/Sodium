@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/knowledge_injection/antonym_inverter.py
 # Description: Antonym recognition and boolean literal negation mapping.
 # ============================================================================

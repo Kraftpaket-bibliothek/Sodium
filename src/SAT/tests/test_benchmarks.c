@@ -406,7 +406,7 @@ static void benchmark_sudoku_valid_sat(void) {
         {1, 0, 0, 4},
         {0, 0, 1, 0},
         {0, 1, 0, 0},
-        {4, 0, 0, 2}
+        {4, 0, 0, 1}
     };
 
     ClauseCollector cc;
@@ -428,7 +428,7 @@ static void benchmark_sudoku_valid_sat(void) {
     TEST_ASSERT(solver.assignment[sudoku_var(1, 2, 1)] == TRUE, "cell (1,2) must be 1");
     TEST_ASSERT(solver.assignment[sudoku_var(2, 1, 1)] == TRUE, "cell (2,1) must be 1");
     TEST_ASSERT(solver.assignment[sudoku_var(3, 0, 4)] == TRUE, "cell (3,0) must be 4");
-    TEST_ASSERT(solver.assignment[sudoku_var(3, 3, 2)] == TRUE, "cell (3,3) must be 2");
+    TEST_ASSERT(solver.assignment[sudoku_var(3, 3, 1)] == TRUE, "cell (3,3) must be 1");
 
     DESTROY_SOLVER(&solver);
     collector_free(&cc);

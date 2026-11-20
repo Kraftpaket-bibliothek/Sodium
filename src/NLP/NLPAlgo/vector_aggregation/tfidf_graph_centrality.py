@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/vector_aggregation/tfidf_graph_centrality.py
 # Description: TF-IDF vector aggregation and graph centrality alignment for rules.
 # ============================================================================

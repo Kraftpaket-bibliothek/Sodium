@@ -16,6 +16,23 @@
 
 # ---- Output Binary Name ----
 TARGET      = sodium
+CC          ?= clang
+
+UNAME_S     := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+SOLVER_LIB  = libsodium_sat.dylib
+SHARED_FLAG = -dynamiclib
+else
+SOLVER_LIB  = libsodium_sat.so
+SHARED_FLAG = -shared
+endif
+
+SOLVER_SRCS = \
+	src/SAT/sat_api.c \
+	src/SAT/CDCL/CDCL.c \
+	src/SAT/CDCL/Clauses/clause_array.c \
+	src/SAT/CDCL/VSIDS.c \
+	src/SAT/CDCL/memory.c
 
 # ---- Compiler & Standard ----
 CXX         = clang++
@@ -47,8 +64,7 @@ CORE_SRCS   = \
     src/SAT/CDCL/CDCL.c \
     src/SAT/CDCL/Clauses/clause_array.c \
     src/SAT/CDCL/VSIDS.c \
-    src/SAT/CDCL/memory.c \
-    src/NLP/nlp_api.c
+    src/SAT/CDCL/memory.c
 
 # ---- GUI-Specific Sources (Dear ImGui + GLFW backend + C++ UI) ----
 GUI_SRCS    = \
@@ -63,7 +79,7 @@ GUI_SRCS    = \
 # ============================================================================
 # TARGET: make  →  Full build (CLI + GUI + Web Server)
 # ============================================================================
-all: check_deps
+all: check_deps $(SOLVER_LIB)
 	@echo ""
 	@echo "========================================================"
 	@echo " Building Sodium with Native Desktop GUI..."
@@ -84,7 +100,7 @@ all: check_deps
 # TARGET: make server  →  Headless build (no GUI, just CLI + Web Server)
 # Useful if ImGui / GLFW are not installed yet.
 # ============================================================================
-server:
+server: $(SOLVER_LIB)
 	@echo ""
 	@echo "========================================================"
 	@echo " Building Sodium (Headless CLI + Web Server)..."
@@ -118,7 +134,7 @@ deps:
 # ============================================================================
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(SOLVER_LIB)
 	@echo "✓ Clean complete."
 
 # ============================================================================
@@ -140,5 +156,9 @@ check_deps:
 		exit 1; \
 	fi
 	@echo "✓ Dependencies found."
+
+$(SOLVER_LIB): $(SOLVER_SRCS)
+	$(CC) -std=c11 -O2 -Wall -Wextra -fPIC $(SHARED_FLAG) \
+		-Isrc/SAT -Isrc/SAT/CDCL $(SOLVER_SRCS) -lm -o $@
 
 .PHONY: all server deps clean check_deps

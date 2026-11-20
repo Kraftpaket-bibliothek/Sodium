@@ -168,6 +168,42 @@ static void is_restart_due_below_threshold(void) {
     DESTROY_SOLVER(&solver);
 }
 
+/* ── 5.10 ── */
+static void restart_compacts_when_compaction_due(void) {
+    CDCLSolver solver;
+    int rc = make_solver(&solver, 8, NULL, 0);
+    TEST_ASSERT(rc == 0, "make_solver failed");
+
+    ClauseRef refs[4];
+    for (int i = 0; i < 4; i++) {
+        int lits[2] = {i * 2 + 1, i * 2 + 2};
+        refs[i] = clause_array_allocate(&solver.arena, lits, 2, true, (float)(i + 1));
+        if (solver.clause_count >= solver.clause_capacity) {
+            solver.clause_capacity *= 2;
+            solver.clauses = (ClauseRef*)realloc(solver.clauses, solver.clause_capacity * sizeof(ClauseRef));
+        }
+        solver.clauses[solver.clause_count++] = refs[i];
+        ATTACH_CLAUSE(&solver, refs[i]);
+    }
+
+    /* Tombstone 2 of the 4 clauses (50% wasted space) */
+    clause_array_mark_deleted(&solver.arena, refs[0]);
+    clause_array_mark_deleted(&solver.arena, refs[2]);
+    TEST_ASSERT(solver.arena.wasted_words > 0, "arena should have wasted words before restart");
+
+    /* RESTART triggers level-0 compaction when >= 20% wasted space */
+    RESTART(&solver);
+
+    TEST_ASSERT(solver.arena.wasted_words == 0, "restart must compact wasted words to 0");
+    TEST_ASSERT(solver.clause_count == 2, "solver should now hold 2 active clauses");
+    for (int i = 0; i < solver.clause_count; i++) {
+        TEST_ASSERT(!clause_array_is_deleted(&solver.arena, solver.clauses[i]),
+                    "remaining clauses must not be marked deleted");
+    }
+
+    DESTROY_SOLVER(&solver);
+}
+
 /* ── main ── */
 int main(void) {
     printf("=== T5: RESTART + COMPUTE_RESTART_LIMIT ===\n");
@@ -180,5 +216,6 @@ int main(void) {
     RUN_TEST(restart_unassigns_all_variables);
     RUN_TEST(is_restart_due_at_threshold);
     RUN_TEST(is_restart_due_below_threshold);
+    RUN_TEST(restart_compacts_when_compaction_due);
     REPORT_AND_EXIT();
 }

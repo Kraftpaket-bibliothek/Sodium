@@ -66,15 +66,16 @@ static void run_alloc_checks(int n) {
     TEST_ASSERT(solver.trail_limits != NULL,      "trail_limits is NULL");
     TEST_ASSERT(solver.trail_limits_size == 0,    "trail_limits_size not 0");
 
-    /* 0.7 – watch_lists */
+    /* 0.7 – watch_lists & arena */
     int watch_total = 2 * n + 1;
     TEST_ASSERT(solver.watch_lists != NULL,      "watch_lists is NULL");
-    TEST_ASSERT(solver.watch_list_sizes != NULL, "watch_list_sizes is NULL");
+    TEST_ASSERT(solver.arena.memory != NULL,     "arena.memory is NULL");
+    TEST_ASSERT(solver.arena.capacity > 0,       "arena.capacity not > 0");
     for (int i = 0; i < watch_total; i++) {
-        TEST_ASSERT(solver.watch_lists[i] != NULL,
-                    "individual watch_list is NULL");
-        TEST_ASSERT(solver.watch_list_sizes[i] == 0,
-                    "watch_list_sizes[i] not 0 at init");
+        TEST_ASSERT(solver.watch_lists[i].watchers != NULL,
+                    "individual watch_list[i].watchers is NULL");
+        TEST_ASSERT(solver.watch_lists[i].size == 0,
+                    "watch_list size not 0 at init");
     }
 
     /* 0.8 – seen */
@@ -86,6 +87,7 @@ static void run_alloc_checks(int n) {
     /* 0.9 – bump_variables */
     TEST_ASSERT(solver.bump_variables != NULL,    "bump_variables is NULL");
     TEST_ASSERT(solver.bump_variables_count == 0, "bump_variables_count not 0");
+    TEST_ASSERT(solver.learned_literals != NULL,  "learned_literals is NULL");
 
     /* 0.10 – saved_polarity */
     TEST_ASSERT(solver.saved_polarity != NULL, "saved_polarity is NULL");
@@ -177,12 +179,11 @@ static void alloc_watch_lists_non_null(void) {
     TEST_ASSERT(rc == 0, "make_solver failed");
     int total = 2 * n + 1;
     TEST_ASSERT(solver.watch_lists != NULL,      "watch_lists is NULL");
-    TEST_ASSERT(solver.watch_list_sizes != NULL, "watch_list_sizes is NULL");
     for (int i = 0; i < total; i++) {
-        TEST_ASSERT(solver.watch_lists[i] != NULL,
-                    "individual watch_list[i] is NULL");
-        TEST_ASSERT(solver.watch_list_sizes[i] == 0,
-                    "watch_list_sizes[i] not 0 at init");
+        TEST_ASSERT(solver.watch_lists[i].watchers != NULL,
+                    "individual watch_list[i].watchers is NULL");
+        TEST_ASSERT(solver.watch_lists[i].size == 0,
+                    "watch_list size not 0 at init");
     }
     DESTROY_SOLVER(&solver);
 }
@@ -263,10 +264,10 @@ static void alloc_destroy_leaves_no_dangling(void) {
     TEST_ASSERT(solver.trail              == NULL, "trail not NULLed");
     TEST_ASSERT(solver.trail_limits       == NULL, "trail_limits not NULLed");
     TEST_ASSERT(solver.watch_lists        == NULL, "watch_lists not NULLed");
-    TEST_ASSERT(solver.watch_list_sizes   == NULL, "watch_list_sizes not NULLed");
-    TEST_ASSERT(solver.watch_list_capacities == NULL, "watch_list_capacities not NULLed");
+    TEST_ASSERT(solver.arena.memory       == NULL, "arena.memory not NULLed");
     TEST_ASSERT(solver.seen               == NULL, "seen not NULLed");
     TEST_ASSERT(solver.bump_variables     == NULL, "bump_variables not NULLed");
+    TEST_ASSERT(solver.learned_literals   == NULL, "learned_literals not NULLed");
     TEST_ASSERT(solver.clauses            == NULL, "clauses not NULLed");
 }
 

@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # Package: src.NLP.NLPAlgo.lexicon_scoring
 # ============================================================================
 

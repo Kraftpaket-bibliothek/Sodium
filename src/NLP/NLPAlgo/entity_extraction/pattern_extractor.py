@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/entity_extraction/pattern_extractor.py
 # Description: Rule-based regex pattern extraction for logical entities and states.
 # ============================================================================

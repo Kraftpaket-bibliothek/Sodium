@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/static_vectorization/vector_utils.py
 # Description: Pure-Python linear algebra routines for dense static embeddings.
 # ============================================================================

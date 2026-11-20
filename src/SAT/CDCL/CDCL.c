@@ -1,105 +1,33 @@
+#include "CDCL.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include "VSIDS.h"
-#include "memory.h"
+#include <string.h>
+#include <math.h>
+#include <limits.h>
 
-#ifdef UNASSIGNED
-#undef UNASSIGNED
-#endif
-typedef enum {
-    UNASSIGNED,
-    TRUE,
-    FALSE
-} AssignmentValue;
-
-typedef enum {
-    NORMAL_SEARCH,
-    CONFLICT_ANALYSIS,
-    UNSAT,
-    SAT,
-    READY
-} SolverMode;
-
-#define NO_REASON NULL
-#define LIT_TO_INDEX(lit, n) ((lit) > 0 ? (size_t)(lit) : (size_t)((n) + abs(lit)))
-
-typedef struct {
-    int* literals;       // Array of signed integers
-    int size;            // Number of literals
-    bool is_learned;     // Whether the clause was learned
-    double activity;     // Usefulness score for database reduction
-    bool is_deleted;     // Whether the clause has been removed
-} Clause;
-
-typedef struct {
-    int number_of_variables;
-    AssignmentValue* assignment;        // 1..number_of_variables
-    AssignmentValue* saved_polarity;    // 1..number_of_variables (phase saving)
-    int* decision_level;                // 1..number_of_variables
-    Clause** reason;                    // 1..number_of_variables
-    int* trail;                         // Assigned literals, in assignment order
-    int trail_size;
-    int trail_capacity;
-    int* trail_limits;                  // Start index of each decision level
-    int trail_limits_size;
-    int trail_limits_capacity;
-    int current_level;
-    int propagation_head;               // Index of the next trail literal to propagate
-    Clause*** watch_lists;              // One list per signed literal
-    int* watch_list_sizes;
-    int* watch_list_capacities;
-    Clause** clauses;                   // Original and learned clause database
-    int clause_count;
-    int clause_capacity;
-    bool* seen;                         // 1..number_of_variables
-    int* bump_variables;
-    int bump_variables_count;
-    int bump_variables_capacity;
-    SolverMode solver_mode;
-    MemoryManager memory_manager;
-    VSIDS vsids;
-    int conflict_count;
-    int conflicts_since_restart;
-    int restart_limit;
-    int restart_base;
-    int restart_index;
-    int learned_clause_count;
-    int min_learned_clauses;
-    int next_refresh_conflict;
-    int refresh_interval;
-} CDCLSolver;
-
-#ifndef SUCCESS
-#define SUCCESS  0
-#endif
-#ifndef FAILURE
-#define FAILURE -1
-#endif
-
-// Forward declarations for helper procedures
-bool ENQUEUE(CDCLSolver* solver, int literal, Clause* reason_clause);
-void ATTACH_CLAUSE(CDCLSolver* solver, Clause* clause);
+bool ENQUEUE(CDCLSolver* solver, int literal, ClauseRef reason_clause);
+void ATTACH_CLAUSE(CDCLSolver* solver, ClauseRef ref);
 void DESTROY_SOLVER(CDCLSolver* solver);
 int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables);
 void UPDATE_BRANCHING_HEURISTIC(CDCLSolver* solver);
 int REFRESH_CLAUSE_DATABASE(CDCLSolver* solver);
+void COMPACT_CLAUSE_DATABASE(CDCLSolver* solver);
 
 static inline void CLEANUP_SOLVER(CDCLSolver* solver) {
     DESTROY_SOLVER(solver);
 }
 
 static inline void INITIALIZE_BASIC_SOLVER_STATE(CDCLSolver* solver, int variables) {
-    memset(solver,0,sizeof(*solver)); //Ensures the memory is properly allocated and ensures that none of them are NULL
     solver->number_of_variables = variables;
     solver->assignment = (AssignmentValue*)malloc((variables + 1) * sizeof(AssignmentValue));
     solver->decision_level = (int*)malloc((variables + 1) * sizeof(int));
-    solver->reason = (Clause**)malloc((variables + 1) * sizeof(Clause*));
+    solver->reason = (ClauseRef*)calloc(variables + 1, sizeof(ClauseRef));
 
     for (int i = 1; i <= variables; i++) {
         solver->assignment[i] = UNASSIGNED;
         solver->decision_level[i] = 0;
-        solver->reason[i] = NO_REASON;
+        solver->reason[i] = CLAUSE_REF_NULL;
     }
 
     solver->current_level = 0;
@@ -118,19 +46,21 @@ static inline void INITIALIZE_BASIC_SOLVER_STATE(CDCLSolver* solver, int variabl
 }
 
 static inline void ADD_ORIGINAL_CLAUSE(CDCLSolver* solver, Clause* clause) {
+    ClauseRef ref = clause_array_allocate(&solver->arena, clause->literals, clause->size, clause->is_learned, (float)clause->activity);
     if (solver->clause_count >= solver->clause_capacity) {
         solver->clause_capacity = (solver->clause_capacity == 0) ? 16 : solver->clause_capacity * 2;
-        solver->clauses = (Clause**)realloc(solver->clauses, solver->clause_capacity * sizeof(Clause*));
+        solver->clauses = (ClauseRef*)realloc(solver->clauses, solver->clause_capacity * sizeof(ClauseRef));
     }
-    solver->clauses[solver->clause_count++] = clause;
-    ATTACH_CLAUSE(solver, clause);
+    solver->clauses[solver->clause_count++] = ref;
+    ATTACH_CLAUSE(solver, ref);
 }
 
 static inline SolverMode INITIALIZE_UNIT_PROPAGATION(CDCLSolver* solver) {
     for (int i = 0; i < solver->clause_count; i++) {
-        Clause* C = solver->clauses[i];
-        if (C != NULL && C->size == 1) {
-            if (!ENQUEUE(solver, C->literals[0], C)) {
+        ClauseRef ref = solver->clauses[i];
+        if (ref != CLAUSE_REF_NULL && clause_array_get_size(&solver->arena, ref) == 1) {
+            int lit = clause_array_get_literal(&solver->arena, ref, 0);
+            if (!ENQUEUE(solver, lit, ref)) {
                 return UNSAT;
             }
         }
@@ -139,78 +69,62 @@ static inline SolverMode INITIALIZE_UNIT_PROPAGATION(CDCLSolver* solver) {
 }
 
 SolverMode INITIALIZE_SOLVER(CDCLSolver* solver, int variables, Clause** input_clauses, int input_clause_count) {
+    memset(solver, 0, sizeof(*solver));
     INITIALIZE_BASIC_SOLVER_STATE(solver, variables);
     if (INITIALIZE_REASONING_SUBSYSTEMS(solver, variables) == FAILURE) {
         CLEANUP_SOLVER(solver);
         return (SolverMode)FAILURE;
     }
 
-    // FOR EACH clause IN clauses:
     for (int i = 0; i < input_clause_count; i++) {
         Clause* clause = input_clauses[i];
 
-        // IF clause is empty:
-        //     CLEANUP_SOLVER(solver)
-        //     RETURN UNSAT
         if (clause == NULL || clause->size == 0) {
             solver->solver_mode = UNSAT;
             CLEANUP_SOLVER(solver);
             return UNSAT;
         }
 
-        // ADD_ORIGINAL_CLAUSE(solver, clause)
         ADD_ORIGINAL_CLAUSE(solver, clause);
     }
 
-    // INITIALIZE_UNIT_PROPAGATION(solver)
     if (INITIALIZE_UNIT_PROPAGATION(solver) == UNSAT) {
         solver->solver_mode = UNSAT;
         CLEANUP_SOLVER(solver);
         return UNSAT;
     }
 
-    // RETURN SUCCESS
     return (SolverMode)SUCCESS;
 }
 
-void ATTACH_CLAUSE(CDCLSolver* solver, Clause* C) {
-    // IF C is deleted:
-    //     Return.
-    if (C == NULL || C->is_deleted) {
+void ATTACH_CLAUSE(CDCLSolver* solver, ClauseRef ref) {
+    if (ref == CLAUSE_REF_NULL || clause_array_is_deleted(&solver->arena, ref)) {
         return;
     }
 
-    // IF C contains exactly one literal:
-    //     Handle it as a unit clause.
-    //     Do not add it to a two-watch list.
-    //     Return.
-    if (C->size <= 1) {
-        if (C->size == 1 && solver->assignment && solver->assignment[abs(C->literals[0])] == UNASSIGNED) {
-            ENQUEUE(solver, C->literals[0], C);
+    int size = clause_array_get_size(&solver->arena, ref);
+    if (size <= 1) {
+        if (size == 1 && solver->assignment) {
+            int lit = clause_array_get_literal(&solver->arena, ref, 0);
+            if (solver->assignment[abs(lit)] == UNASSIGNED) {
+                ENQUEUE(solver, lit, ref);
+            }
         }
         return;
     }
-    int lit0 = C->literals[0];
-    size_t idx0 = LIT_TO_INDEX(lit0, solver->number_of_variables);
-    if (solver->watch_list_sizes[idx0] >= solver->watch_list_capacities[idx0]) {
-        solver->watch_list_capacities[idx0] *= 2;
-        solver->watch_lists[idx0] = (Clause**)realloc(solver->watch_lists[idx0],
-            solver->watch_list_capacities[idx0] * sizeof(Clause*));
-    }
-    solver->watch_lists[idx0][solver->watch_list_sizes[idx0]++] = C;
 
-    // Add C to the watch list for C.literals[1].
-    int lit1 = C->literals[1];
+    int32_t* lits = clause_array_get_literals(&solver->arena, ref);
+    int lit0 = lits[0];
+    int lit1 = lits[1];
+
+    size_t idx0 = LIT_TO_INDEX(lit0, solver->number_of_variables);
+    watch_list_push(&solver->watch_lists[idx0], ref, lit1);
+
     size_t idx1 = LIT_TO_INDEX(lit1, solver->number_of_variables);
-    if (solver->watch_list_sizes[idx1] >= solver->watch_list_capacities[idx1]) {
-        solver->watch_list_capacities[idx1] *= 2;
-        solver->watch_lists[idx1] = (Clause**)realloc(solver->watch_lists[idx1],
-            solver->watch_list_capacities[idx1] * sizeof(Clause*));
-    }
-    solver->watch_lists[idx1][solver->watch_list_sizes[idx1]++] = C;
+    watch_list_push(&solver->watch_lists[idx1], ref, lit0);
 }
 
-bool ENQUEUE(CDCLSolver* solver, int L, Clause* reason_clause) {
+bool ENQUEUE(CDCLSolver* solver, int L, ClauseRef reason_clause) {
     int variable = abs(L);
     AssignmentValue required_value = (L > 0) ? TRUE : FALSE;
 
@@ -222,7 +136,6 @@ bool ENQUEUE(CDCLSolver* solver, int L, Clause* reason_clause) {
     solver->decision_level[variable] = solver->current_level;
     solver->reason[variable] = reason_clause;
 
-    // Append L to solver.trail
     if (solver->trail_size >= solver->trail_capacity) {
         solver->trail_capacity = (solver->trail_capacity == 0) ? 16 : solver->trail_capacity * 2;
         solver->trail = (int*)realloc(solver->trail, solver->trail_capacity * sizeof(int));
@@ -232,8 +145,6 @@ bool ENQUEUE(CDCLSolver* solver, int L, Clause* reason_clause) {
     return true;
 }
 
-#define NO_CONFLICT NULL
-
 static inline AssignmentValue LIT_VALUE(const CDCLSolver* solver, int lit) {
     int var = abs(lit);
     AssignmentValue val = solver->assignment[var];
@@ -242,80 +153,63 @@ static inline AssignmentValue LIT_VALUE(const CDCLSolver* solver, int lit) {
     return (val == TRUE) ? FALSE : TRUE;
 }
 
-Clause* PROPAGATE(CDCLSolver* solver) {
+ClauseRef PROPAGATE(CDCLSolver* solver) {
     size_t n = solver->number_of_variables;
     while (solver->propagation_head < solver->trail_size) {
-        // assigned_literal = solver.trail[solver.propagation_head]
-        // Increment solver.propagation_head.
         int assigned_literal = solver->trail[solver->propagation_head++];
-
-        // When literal `assigned_literal` is assigned TRUE, its complement
-        // `false_literal = -assigned_literal` becomes FALSE.
-        // Clauses that watch `false_literal` are in danger and must be inspected.
         int false_literal = -assigned_literal;
 
-        // watch_list = solver.watch_lists[INDEX(false_literal)]
         size_t false_idx = LIT_TO_INDEX(false_literal, n);
-        Clause*** p_watch_list = &solver->watch_lists[false_idx];
-        Clause** watch_list = *p_watch_list;
-        int* p_watch_size = &solver->watch_list_sizes[false_idx];
+        WatchList* wl = &solver->watch_lists[false_idx];
+        Watcher* watchers = wl->watchers;
 
-        int read_index = 0;
-        int write_index = 0;
+        uint32_t read_index = 0;
+        uint32_t write_index = 0;
 
-        // WHILE read_index < LENGTH(watch_list):
-        while (read_index < *p_watch_size) {
-            // C = watch_list[read_index]
-            // Increment read_index.
-            Clause* C = watch_list[read_index++];
+        while (read_index < wl->size) {
+            Watcher w = watchers[read_index++];
+            ClauseRef ref = w.clause_ref;
 
-            // IF C is deleted:
-            //     Continue.
-            if (C == NULL || C->is_deleted) {
+            if (clause_array_is_deleted(&solver->arena, ref)) {
                 continue;
             }
 
-            // Ensure C.literals[0] is the false watched literal.
-            if (C->literals[1] == false_literal) {
-                int tmp = C->literals[0];
-                C->literals[0] = C->literals[1];
-                C->literals[1] = tmp;
-            }
-
-            if (C->literals[0] != false_literal) {
-                // The list contains a stale or invalid watch entry.
-                // Handle the invariant violation safely.
+            // Fast Path 1: Check blocking literal without touching the arena memory
+            if (LIT_VALUE(solver, w.blocking_literal) == TRUE) {
+                watchers[write_index++] = w;
                 continue;
             }
 
-            int other_watch = C->literals[1];
+            int32_t* lits = clause_array_get_literals(&solver->arena, ref);
+            int size = clause_array_get_size(&solver->arena, ref);
 
-            // Case 1: The other watch already satisfies the clause.
+            // Ensure false_literal is at lits[0]
+            if (lits[1] == false_literal) {
+                clause_array_swap_literals(&solver->arena, ref, 0, 1);
+            }
+
+            if (lits[0] != false_literal) {
+                continue;
+            }
+
+            int other_watch = lits[1];
+
+            // Fast Path 2: other watch already satisfies clause
             if (LIT_VALUE(solver, other_watch) == TRUE) {
-                watch_list[write_index++] = C;
+                w.blocking_literal = other_watch;
+                watchers[write_index++] = w;
                 continue;
             }
 
-            // Case 2: Find a replacement for the false watch.
+            // Search for replacement watch
             bool replacement_found = false;
-
-            for (int position = 2; position < C->size; position++) {
-                int candidate = C->literals[position];
-
+            for (int pos = 2; pos < size; pos++) {
+                int candidate = lits[pos];
                 if (LIT_VALUE(solver, candidate) != FALSE) {
-                    C->literals[0] = candidate;
-                    C->literals[position] = false_literal;
+                    clause_array_swap_literals(&solver->arena, ref, 0, pos);
 
-                    // Append C to new_watch_list.
                     size_t cand_idx = LIT_TO_INDEX(candidate, n);
-                    if (solver->watch_list_sizes[cand_idx] >= solver->watch_list_capacities[cand_idx]) {
-                        solver->watch_list_capacities[cand_idx] *= 2;
-                        solver->watch_lists[cand_idx] = (Clause**)realloc(
-                            solver->watch_lists[cand_idx],
-                            solver->watch_list_capacities[cand_idx] * sizeof(Clause*)
-                        );
-                    }
-                    solver->watch_lists[cand_idx][solver->watch_list_sizes[cand_idx]++] = C;
+                    watch_list_push(&solver->watch_lists[cand_idx], ref, other_watch);
 
                     replacement_found = true;
                     break;
@@ -323,81 +217,55 @@ Clause* PROPAGATE(CDCLSolver* solver) {
             }
 
             if (replacement_found) {
-                // Do not copy C into the old watch list.
                 continue;
             }
 
-            // Case 3: No replacement exists.
-            // The false watch must remain in the old list.
-            watch_list[write_index++] = C;
+            // No replacement found: clause remains in current watch list
+            w.blocking_literal = other_watch;
+            watchers[write_index++] = w;
 
+            // Conflict detected: other watch is FALSE
             if (LIT_VALUE(solver, other_watch) == FALSE) {
-                // Copy every unprocessed watch-list entry into the remaining positions.
-                while (read_index < *p_watch_size) {
-                    watch_list[write_index++] = watch_list[read_index++];
+                while (read_index < wl->size) {
+                    watchers[write_index++] = watchers[read_index++];
                 }
-                *p_watch_size = write_index;
-
-                // Return C as the conflicting clause.
-                return C;
+                wl->size = write_index;
+                return ref;
             }
 
-            // The other watch is unassigned.
-            if (ENQUEUE(solver, other_watch, C) == false) {
-                // Preserve all unprocessed watch-list entries.
-                // Truncate the list to its valid entries.
-                while (read_index < *p_watch_size) {
-                    watch_list[write_index++] = watch_list[read_index++];
+            // Unit propagation: other watch is UNASSIGNED
+            if (!ENQUEUE(solver, other_watch, ref)) {
+                while (read_index < wl->size) {
+                    watchers[write_index++] = watchers[read_index++];
                 }
-                *p_watch_size = write_index;
-
-                // Return C as the conflicting clause.
-                return C;
+                wl->size = write_index;
+                return ref;
             }
         }
 
-        // Truncate watch_list to write_index.
-        *p_watch_size = write_index;
+        wl->size = write_index;
     }
 
-    return NO_CONFLICT;
+    return CLAUSE_REF_NULL;
 }
 
-#define ANALYSIS_ERROR -1
 #define NO_POSITION -1
 
-typedef struct {
-    int* literals;
-    int size;
-    int capacity;
-} IntList;
-
-static inline void int_list_init(IntList* list, int cap) {
-    list->size = 0;
-    list->capacity = cap < 4 ? 4 : cap;
-    list->literals = (int*)malloc(list->capacity * sizeof(int));
-}
-
-static inline void int_list_push(IntList* list, int val) {
-    if (list->size >= list->capacity) {
-        list->capacity *= 2;
-        list->literals = (int*)realloc(list->literals, list->capacity * sizeof(int));
+static inline void learned_literals_push(CDCLSolver* solver, int* size, int lit) {
+    if (*size >= solver->learned_literals_capacity) {
+        solver->learned_literals_capacity = (solver->learned_literals_capacity == 0) ? 32 : solver->learned_literals_capacity * 2;
+        solver->learned_literals = (int*)realloc(solver->learned_literals,
+            solver->learned_literals_capacity * sizeof(int));
     }
-    list->literals[list->size++] = val;
+    solver->learned_literals[(*size)++] = lit;
 }
 
-int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_learned_clause) {
-    // Set solver.solver_mode to CONFLICT_ANALYSIS.
+int ANALYZE_CONFLICT(CDCLSolver* solver, ClauseRef conflict_clause, ClauseRef* out_learned_clause) {
     solver->solver_mode = CONFLICT_ANALYSIS;
 
-    // learned_clause = empty list
-    // Append a placeholder for the asserting literal.
-    IntList learned_clause;
-    int_list_init(&learned_clause, 16);
-    int_list_push(&learned_clause, 0); // Placeholder for index 0
+    int learned_size = 0;
+    learned_literals_push(solver, &learned_size, 0); // Placeholder for index 0 (asserting literal)
 
-    // Clear solver.seen.
-    // Clear solver.bump_variables.
     for (int i = 0; i < solver->bump_variables_count; i++) {
         solver->seen[solver->bump_variables[i]] = false;
     }
@@ -405,31 +273,28 @@ int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_l
 
     int path_count = 0;
     int trail_index = solver->trail_size - 1;
-    Clause* current_clause = conflict_clause;
+    ClauseRef current_clause = conflict_clause;
     int pivot_var = 0;
 
-    // LOOP:
     while (true) {
-        // FOR EACH literal L in current_clause:
-        for (int i = 0; i < current_clause->size; i++) {
-            int L = current_clause->literals[i];
+        if (clause_array_is_learned(&solver->arena, current_clause)) {
+            float act = clause_array_get_activity(&solver->arena, current_clause);
+            clause_array_set_activity(&solver->arena, current_clause, act + 1.0f);
+        }
+
+        int c_size = clause_array_get_size(&solver->arena, current_clause);
+        int32_t* c_lits = clause_array_get_literals(&solver->arena, current_clause);
+
+        for (int i = 0; i < c_size; i++) {
+            int L = c_lits[i];
             int variable = abs(L);
 
-            if (variable == pivot_var) {
-                continue;
-            }
-
-            if (solver->seen[variable]) {
-                continue;
-            }
-
-            if (solver->decision_level[variable] == 0) {
+            if (variable == pivot_var || solver->seen[variable] || solver->decision_level[variable] == 0) {
                 continue;
             }
 
             solver->seen[variable] = true;
 
-            // Append variable to solver.bump_variables.
             if (solver->bump_variables_count >= solver->bump_variables_capacity) {
                 solver->bump_variables_capacity *= 2;
                 solver->bump_variables = (int*)realloc(solver->bump_variables,
@@ -440,55 +305,40 @@ int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_l
             if (solver->decision_level[variable] == solver->current_level) {
                 path_count++;
             } else {
-                int_list_push(&learned_clause, L);
+                learned_literals_push(solver, &learned_size, L);
             }
         }
 
-        // Skip rule: find the most recent relevant assignment.
-        while (trail_index >= 0 &&
-               solver->seen[abs(solver->trail[trail_index])] == false) {
+        while (trail_index >= 0 && solver->seen[abs(solver->trail[trail_index])] == false) {
             trail_index--;
         }
 
         if (trail_index < 0) {
-            // Report a conflict-analysis invariant failure.
-            // Clear all temporary seen marks.
-            // Return ANALYSIS_ERROR.
             for (int i = 0; i < solver->bump_variables_count; i++) {
                 solver->seen[solver->bump_variables[i]] = false;
             }
-            free(learned_clause.literals);
-            *out_learned_clause = NULL;
+            *out_learned_clause = CLAUSE_REF_NULL;
             return ANALYSIS_ERROR;
         }
 
         int resolved_literal = solver->trail[trail_index];
         int variable = abs(resolved_literal);
-
         trail_index--;
 
-        // This assignment has now been processed.
         solver->seen[variable] = false;
         path_count--;
 
-        // The first UIP has been reached.
         if (path_count == 0) {
-            int asserting_literal = -resolved_literal;
-            learned_clause.literals[0] = asserting_literal;
+            solver->learned_literals[0] = -resolved_literal;
             break;
         }
 
-        Clause* reason_clause = solver->reason[variable];
-
-        if (reason_clause == NO_REASON) {
-            // Report a conflict-analysis invariant failure.
-            // Clear all temporary seen marks.
-            // Return ANALYSIS_ERROR.
+        ClauseRef reason_clause = solver->reason[variable];
+        if (reason_clause == CLAUSE_REF_NULL) {
             for (int i = 0; i < solver->bump_variables_count; i++) {
                 solver->seen[solver->bump_variables[i]] = false;
             }
-            free(learned_clause.literals);
-            *out_learned_clause = NULL;
+            *out_learned_clause = CLAUSE_REF_NULL;
             return ANALYSIS_ERROR;
         }
 
@@ -496,30 +346,27 @@ int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_l
         current_clause = reason_clause;
     }
 
-    // Remove duplicate literals from learned_clause.
-    // Validate that learned_clause is not tautological.
     int write_idx = 1;
-    for (int i = 1; i < learned_clause.size; i++) {
-        int lit = learned_clause.literals[i];
+    for (int i = 1; i < learned_size; i++) {
+        int lit = solver->learned_literals[i];
         bool duplicate = false;
         for (int j = 1; j < write_idx; j++) {
-            if (learned_clause.literals[j] == lit) {
+            if (solver->learned_literals[j] == lit) {
                 duplicate = true;
                 break;
             }
         }
         if (!duplicate) {
-            learned_clause.literals[write_idx++] = lit;
+            solver->learned_literals[write_idx++] = lit;
         }
     }
-    learned_clause.size = write_idx;
+    learned_size = write_idx;
 
-    // Determine the non-chronological backtrack level.
     int backtrack_level = 0;
     int highest_level_position = NO_POSITION;
 
-    for (int pos = 1; pos < learned_clause.size; pos++) {
-        int L = learned_clause.literals[pos];
+    for (int pos = 1; pos < learned_size; pos++) {
+        int L = solver->learned_literals[pos];
         int level = solver->decision_level[abs(L)];
 
         if (level > backtrack_level) {
@@ -529,77 +376,52 @@ int ANALYZE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause, Clause** out_l
     }
 
     if (highest_level_position != NO_POSITION) {
-        int tmp = learned_clause.literals[1];
-        learned_clause.literals[1] = learned_clause.literals[highest_level_position];
-        learned_clause.literals[highest_level_position] = tmp;
+        int tmp = solver->learned_literals[1];
+        solver->learned_literals[1] = solver->learned_literals[highest_level_position];
+        solver->learned_literals[highest_level_position] = tmp;
     }
 
-    // Clear all temporary seen marks.
     for (int i = 0; i < solver->bump_variables_count; i++) {
         solver->seen[solver->bump_variables[i]] = false;
     }
 
-    // Allocate output learned Clause
-    Clause* res_clause = (Clause*)malloc(sizeof(Clause));
-    res_clause->size = learned_clause.size;
-    res_clause->literals = learned_clause.literals;
-    res_clause->is_learned = true;
-    res_clause->activity = 0.0;
-    res_clause->is_deleted = false;
+    ClauseRef res_clause = clause_array_allocate(&solver->arena, solver->learned_literals, learned_size, true, 1.0f);
 
     *out_learned_clause = res_clause;
-
-    // Return backtrack_level
     return backtrack_level;
 }
 
-#define SUCCESS  0
-#define ERROR   -1
-
 int BACKTRACK(CDCLSolver* solver, int target_level) {
-    // IF target_level > solver.current_level:
-    //     Report an invalid backtrack target.
-    //     Return ERROR.
     if (target_level > solver->current_level) {
         fprintf(stderr, "Error: Invalid backtrack target %d > current level %d\n",
                 target_level, solver->current_level);
         return ERROR;
     }
 
-    // WHILE solver.current_level > target_level:
     while (solver->current_level > target_level) {
-        // IF solver.trail_limits is empty:
-        //     Report an inconsistent decision-level state.
-        //     Return ERROR.
         if (solver->trail_limits_size <= 0) {
             fprintf(stderr, "Error: Inconsistent decision-level state, trail_limits is empty\n");
             return ERROR;
         }
 
-        // trail_start = Remove the last entry from solver.trail_limits.
         int trail_start = solver->trail_limits[--solver->trail_limits_size];
 
-        // WHILE LENGTH(solver.trail) > trail_start:
         while (solver->trail_size > trail_start) {
-            // L = Remove the last literal from solver.trail.
             int L = solver->trail[--solver->trail_size];
             int variable = abs(L);
 
-            // Phase saving: save polarity before unassigning
             if (solver->saved_polarity) {
                 solver->saved_polarity[variable] = solver->assignment[variable];
             }
 
             solver->assignment[variable] = UNASSIGNED;
             solver->decision_level[variable] = 0;
-            solver->reason[variable] = NO_REASON;
+            solver->reason[variable] = CLAUSE_REF_NULL;
         }
 
-        // Decrement solver.current_level.
         solver->current_level--;
     }
 
-    // Never move the propagation cursor past the remaining trail.
     if (solver->propagation_head > solver->trail_size) {
         solver->propagation_head = solver->trail_size;
     }
@@ -607,28 +429,23 @@ int BACKTRACK(CDCLSolver* solver, int target_level) {
     return SUCCESS;
 }
 
-#include <math.h>
-#include <limits.h>
-
 #define MAX_RESTART_LIMIT (INT_MAX / 2)
 
 int COMPUTE_RESTART_LIMIT(int base, int restart_index) {
-    // limit = base * 1.5 raised to restart_index
     double calculated = (double)base * pow(1.5, (double)restart_index);
-
-    // Return the integer limit, subject to a safe maximum.
     if (calculated >= (double)MAX_RESTART_LIMIT) {
         return MAX_RESTART_LIMIT;
     }
-
     return (int)calculated;
 }
 
 int RESTART(CDCLSolver* solver) {
-    // Restart only after a completed conflict analysis and
-    // learned-clause insertion, not in the middle of analysis.
     if (BACKTRACK(solver, 0) == ERROR) {
         return ERROR;
+    }
+
+    if (clause_array_compaction_needed(&solver->arena, 0.20)) {
+        COMPACT_CLAUSE_DATABASE(solver);
     }
 
     solver->conflicts_since_restart = 0;
@@ -642,139 +459,79 @@ int RESTART(CDCLSolver* solver) {
     return SUCCESS;
 }
 
-#define CONTINUE 1
-#define FAILURE -1
-
 static inline bool IS_RESTART_DUE(const CDCLSolver* solver) {
     return solver->conflicts_since_restart >= solver->restart_limit;
 }
 
 bool IS_DATABASE_REFRESH_DUE(const CDCLSolver* solver) {
-    // IF solver.conflict_count < solver.next_refresh_conflict:
-    //     RETURN FALSE
     if (solver->conflict_count < solver->next_refresh_conflict) {
         return false;
     }
-
-    // IF solver.learned_clause_count < solver.min_learned_clauses:
-    //     RETURN FALSE
     if (solver->learned_clause_count < solver->min_learned_clauses) {
         return false;
     }
-
-    // RETURN TRUE
     return true;
 }
 
-int HANDLE_CONFLICT(CDCLSolver* solver, Clause* conflict_clause) {
-    // IF solver.current_level == 0:
-    //     RETURN UNSAT
+int HANDLE_CONFLICT(CDCLSolver* solver, ClauseRef conflict_clause) {
     if (solver->current_level == 0) {
         return UNSAT;
     }
 
-    // (learned_clause, backtrack_level) = ANALYZE_CONFLICT(solver, conflict_clause)
-    Clause* learned_clause = NULL;
+    ClauseRef learned_clause = CLAUSE_REF_NULL;
     int backtrack_level = ANALYZE_CONFLICT(solver, conflict_clause, &learned_clause);
 
-    // IF learned_clause is INVALID:
-    //     RETURN ERROR
-    if (backtrack_level == ANALYSIS_ERROR || learned_clause == NULL) {
+    if (backtrack_level == ANALYSIS_ERROR || learned_clause == CLAUSE_REF_NULL) {
         return ERROR;
     }
 
-    // BUMP_VSIDS_SCORES(solver, learned_clause)
-    // DECAY_VSIDS_ACTIVITY(solver)
     UPDATE_BRANCHING_HEURISTIC(solver);
 
-    // learned_id = ADD_LEARNED_CLAUSE(solver, learned_clause)
-    if (solver->clause_count >= solver->clause_capacity) {
-        solver->clause_capacity = (solver->clause_capacity == 0) ? 16 : solver->clause_capacity * 2;
-        solver->clauses = (Clause**)realloc(solver->clauses, solver->clause_capacity * sizeof(Clause*));
-    }
-    solver->clauses[solver->clause_count++] = learned_clause;
-    solver->learned_clause_count++;
-
-    // ATTACH_CLAUSE_TO_WATCHLISTS(solver, learned_id)
-    ATTACH_CLAUSE(solver, learned_clause);
-
-    // BACKTRACK(solver, backtrack_level)
     if (BACKTRACK(solver, backtrack_level) == ERROR) {
         return ERROR;
     }
 
-    // asserting_literal = learned_clause[0]
-    int asserting_literal = learned_clause->literals[0];
+    if (solver->clause_count >= solver->clause_capacity) {
+        solver->clause_capacity = (solver->clause_capacity == 0) ? 16 : solver->clause_capacity * 2;
+        solver->clauses = (ClauseRef*)realloc(solver->clauses, solver->clause_capacity * sizeof(ClauseRef));
+    }
+    solver->clauses[solver->clause_count++] = learned_clause;
+    solver->learned_clause_count++;
 
-    // IF ENQUEUE(solver, asserting_literal, backtrack_level, learned_id) == FAILURE:
-    //     RETURN ERROR
+    ATTACH_CLAUSE(solver, learned_clause);
+
+    int asserting_literal = clause_array_get_literal(&solver->arena, learned_clause, 0);
+
     if (!ENQUEUE(solver, asserting_literal, learned_clause)) {
         return ERROR;
     }
 
-    // solver.conflict_count += 1
     solver->conflict_count += 1;
     solver->conflicts_since_restart += 1;
 
-    // IF IS_DATABASE_REFRESH_DUE(solver):
-    //     REFRESH_CLAUSE_DATABASE(solver)
     if (IS_DATABASE_REFRESH_DUE(solver)) {
         REFRESH_CLAUSE_DATABASE(solver);
     }
 
-    // IF IS_RESTART_DUE(solver):
-    //     RESTART(solver)
     if (IS_RESTART_DUE(solver)) {
         RESTART(solver);
     }
 
-    // RETURN CONTINUE
     return CONTINUE;
 }
 
-#define UNDEFINED UNASSIGNED
-#define VAL_TRUE  TRUE
-#define VAL_FALSE FALSE
-
 AssignmentValue CHOOSE_POLARITY(CDCLSolver* solver, int variable) {
-    // IF solver.saved_polarity[variable] != UNDEFINED:
-    //     RETURN solver.saved_polarity[variable]
     if (solver->saved_polarity && solver->saved_polarity[variable] != UNDEFINED) {
         return solver->saved_polarity[variable];
     }
-
-    // RETURN VAL_TRUE
     return VAL_TRUE;
 }
 
-SolverMode SOLVE(CDCLSolver* solver, int number_of_variables, Clause** input_clauses, int input_clause_count) {
-    // result = INITIALIZE_SOLVER(solver, number_of_variables, input_clauses)
-    SolverMode result = INITIALIZE_SOLVER(
-        solver,
-        number_of_variables,
-        input_clauses,
-        input_clause_count
-    );
-
-    // IF result == UNSAT:
-    //     Return UNSAT.
-    if (result == UNSAT) {
-        return UNSAT;
-    }
-
-    // IF result is not SUCCESS (or READY):
-    //     Return ERROR.
-    if (result != (SolverMode)SUCCESS && result != READY) {
-        return (SolverMode)ERROR;
-    }
-
-    // WHILE TRUE:
+static inline SolverMode CDCL_SEARCH_LOOP(CDCLSolver* solver) {
     while (true) {
-        Clause* conflict_clause = PROPAGATE(solver);
+        ClauseRef conflict_clause = PROPAGATE(solver);
 
-        if (conflict_clause != NO_CONFLICT) {
-            // IF a conflict occurs:
-            //     HANDLE_CONFLICT(solver, conflict_clause).
+        if (conflict_clause != CLAUSE_REF_NULL) {
             int handle_res = HANDLE_CONFLICT(solver, conflict_clause);
 
             if (handle_res == UNSAT) {
@@ -788,14 +545,10 @@ SolverMode SOLVE(CDCLSolver* solver, int number_of_variables, Clause** input_cla
             continue;
         }
 
-        // next_variable = VSIDS_SELECT_VARIABLE(solver.vsids, solver.assignment)
         int* assignment_ints = (int*)solver->assignment;
         size_t next_var_size_t = vsids_select_variable(&solver->vsids, assignment_ints);
         int next_variable = (next_var_size_t == NO_VARIABLE) ? 0 : (int)next_var_size_t;
 
-        // IF next_variable does not exist:
-        //     Set solver.solver_mode to SAT.
-        //     Return SAT with the current assignment.
         if (next_variable == 0) {
             solver->solver_mode = SAT;
             return SAT;
@@ -804,7 +557,6 @@ SolverMode SOLVE(CDCLSolver* solver, int number_of_variables, Clause** input_cla
         AssignmentValue pol = CHOOSE_POLARITY(solver, next_variable);
         int decision_literal = (pol == VAL_TRUE) ? next_variable : -next_variable;
 
-        // Create a new decision level.
         solver->current_level++;
         if (solver->trail_limits_size >= solver->trail_limits_capacity) {
             solver->trail_limits_capacity *= 2;
@@ -813,145 +565,266 @@ SolverMode SOLVE(CDCLSolver* solver, int number_of_variables, Clause** input_cla
         }
         solver->trail_limits[solver->trail_limits_size++] = solver->trail_size;
 
-        // Enqueue decision_literal with NO_REASON.
-        // IF enqueue fails:
-        //     Report an invariant violation.
-        //     Return ERROR.
-        if (!ENQUEUE(solver, decision_literal, NO_REASON)) {
+        if (!ENQUEUE(solver, decision_literal, CLAUSE_REF_NULL)) {
             fprintf(stderr, "Invariant violation: Failed to enqueue decision literal %d\n", decision_literal);
             return (SolverMode)ERROR;
         }
     }
 }
 
-static inline void remove_clause_from_watchlist(CDCLSolver* solver, Clause* C, int lit) {
+SolverMode INITIALIZE_SOLVER_FROM_ARENA(CDCLSolver* solver, int variables) {
+    ClauseArray saved_arena = solver->arena;
+    memset(solver, 0, sizeof(*solver));
+    solver->arena = saved_arena;
+
+    INITIALIZE_BASIC_SOLVER_STATE(solver, variables);
+    if (INITIALIZE_REASONING_SUBSYSTEMS(solver, variables) == FAILURE) {
+        CLEANUP_SOLVER(solver);
+        return (SolverMode)FAILURE;
+    }
+
+    size_t offset = 1;
+    while (offset < solver->arena.used_words) {
+        uint32_t header = solver->arena.memory[offset];
+        int size = (int)(header & CLAUSE_SIZE_MASK);
+        ClauseRef ref = (ClauseRef)offset;
+
+        if (size == 0) {
+            solver->solver_mode = UNSAT;
+            CLEANUP_SOLVER(solver);
+            return UNSAT;
+        }
+
+        if (solver->clause_count >= solver->clause_capacity) {
+            solver->clause_capacity = (solver->clause_capacity == 0) ? 16 : solver->clause_capacity * 2;
+            solver->clauses = (ClauseRef*)realloc(solver->clauses, solver->clause_capacity * sizeof(ClauseRef));
+        }
+        solver->clauses[solver->clause_count++] = ref;
+        if (clause_array_is_learned(&solver->arena, ref)) {
+            solver->learned_clause_count++;
+        }
+        ATTACH_CLAUSE(solver, ref);
+
+        offset += (size_t)CLAUSE_HEADER_WORDS + (size_t)size;
+    }
+
+    if (INITIALIZE_UNIT_PROPAGATION(solver) == UNSAT) {
+        solver->solver_mode = UNSAT;
+        CLEANUP_SOLVER(solver);
+        return UNSAT;
+    }
+
+    return (SolverMode)SUCCESS;
+}
+
+SolverMode SOLVE(CDCLSolver* solver, int number_of_variables, Clause** input_clauses, int input_clause_count) {
+    SolverMode result = INITIALIZE_SOLVER(
+        solver,
+        number_of_variables,
+        input_clauses,
+        input_clause_count
+    );
+
+    if (result == UNSAT) {
+        return UNSAT;
+    }
+
+    if (result != (SolverMode)SUCCESS && result != READY) {
+        return (SolverMode)ERROR;
+    }
+
+    return CDCL_SEARCH_LOOP(solver);
+}
+
+SolverMode SOLVE_ARENA(CDCLSolver* solver, int number_of_variables) {
+    SolverMode result = INITIALIZE_SOLVER_FROM_ARENA(solver, number_of_variables);
+
+    if (result == UNSAT) {
+        return UNSAT;
+    }
+
+    if (result != (SolverMode)SUCCESS && result != READY) {
+        return (SolverMode)ERROR;
+    }
+
+    return CDCL_SEARCH_LOOP(solver);
+}
+
+static inline void remove_clause_from_watchlist(CDCLSolver* solver, ClauseRef ref, int lit) {
     size_t idx = LIT_TO_INDEX(lit, solver->number_of_variables);
-    Clause** list = solver->watch_lists[idx];
-    int size = solver->watch_list_sizes[idx];
-    for (int i = 0; i < size; i++) {
-        if (list[i] == C) {
-            list[i] = list[size - 1];
-            solver->watch_list_sizes[idx]--;
+    WatchList* wl = &solver->watch_lists[idx];
+    for (uint32_t i = 0; i < wl->size; i++) {
+        if (wl->watchers[i].clause_ref == ref) {
+            wl->watchers[i] = wl->watchers[wl->size - 1];
+            wl->size--;
             break;
         }
     }
 }
 
-static inline bool is_clause_a_reason(const CDCLSolver* solver, const Clause* C) {
+static inline bool is_clause_a_reason(const CDCLSolver* solver, ClauseRef ref) {
     for (int i = 1; i <= solver->number_of_variables; i++) {
-        if (solver->assignment[i] != UNASSIGNED && solver->reason[i] == C) {
+        if (solver->assignment[i] != UNASSIGNED && solver->reason[i] == ref) {
             return true;
         }
     }
     return false;
 }
 
-static int compare_clause_candidates(const void* a, const void* b) {
-    Clause* ca = *(Clause**)a;
-    Clause* cb = *(Clause**)b;
+typedef struct {
+    ClauseRef ref;
+    float activity;
+    int size;
+} CandidateRef;
 
-    // 1. Clause activity, from lowest to highest.
+static int compare_candidate_refs(const void* a, const void* b) {
+    const CandidateRef* ca = (const CandidateRef*)a;
+    const CandidateRef* cb = (const CandidateRef*)b;
     if (ca->activity < cb->activity) return -1;
     if (ca->activity > cb->activity) return 1;
-
-    // 3. Clause size, from largest to smallest, as a tie-breaker.
     if (ca->size > cb->size) return -1;
     if (ca->size < cb->size) return 1;
-
     return 0;
 }
 
+static void solver_remap_reasons_cb(ClauseRef old_ref, ClauseRef new_ref, void* ctx) {
+    CDCLSolver* solver = (CDCLSolver*)ctx;
+    for (int i = 1; i <= solver->number_of_variables; i++) {
+        if (solver->reason[i] == old_ref) {
+            solver->reason[i] = new_ref;
+        }
+    }
+}
+
+static void normalize_watches_for_attach(CDCLSolver* solver, ClauseRef ref) {
+    int size = clause_array_get_size(&solver->arena, ref);
+    if (size <= 2) return;
+    int32_t* lits = clause_array_get_literals(&solver->arena, ref);
+
+    if (LIT_VALUE(solver, lits[0]) == FALSE) {
+        for (int i = 2; i < size; i++) {
+            if (LIT_VALUE(solver, lits[i]) != FALSE) {
+                int32_t tmp = lits[0];
+                lits[0] = lits[i];
+                lits[i] = tmp;
+                break;
+            }
+        }
+    }
+
+    if (LIT_VALUE(solver, lits[1]) == FALSE) {
+        for (int i = 2; i < size; i++) {
+            if (LIT_VALUE(solver, lits[i]) != FALSE) {
+                int32_t tmp = lits[1];
+                lits[1] = lits[i];
+                lits[i] = tmp;
+                break;
+            }
+        }
+    }
+}
+
+void COMPACT_CLAUSE_DATABASE(CDCLSolver* solver) {
+    if (!solver || solver->arena.wasted_words == 0) {
+        return;
+    }
+
+    clause_array_compact(&solver->arena, solver_remap_reasons_cb, solver);
+
+    solver->clause_count = 0;
+    solver->learned_clause_count = 0;
+    size_t offset = 1;
+    while (offset < solver->arena.used_words) {
+        uint32_t header = solver->arena.memory[offset];
+        int size = (int)(header & CLAUSE_SIZE_MASK);
+        ClauseRef ref = (ClauseRef)offset;
+
+        if (solver->clause_count >= solver->clause_capacity) {
+            solver->clause_capacity = (solver->clause_capacity == 0) ? 16 : solver->clause_capacity * 2;
+            solver->clauses = (ClauseRef*)realloc(solver->clauses, solver->clause_capacity * sizeof(ClauseRef));
+        }
+        solver->clauses[solver->clause_count++] = ref;
+        if (clause_array_is_learned(&solver->arena, ref)) {
+            solver->learned_clause_count++;
+        }
+
+        offset += (size_t)CLAUSE_HEADER_WORDS + (size_t)size;
+    }
+
+    int watch_list_total = 2 * solver->number_of_variables + 1;
+    for (int i = 0; i < watch_list_total; i++) {
+        watch_list_clear(&solver->watch_lists[i]);
+    }
+
+    for (int i = 0; i < solver->clause_count; i++) {
+        ClauseRef ref = solver->clauses[i];
+        normalize_watches_for_attach(solver, ref);
+        ATTACH_CLAUSE(solver, ref);
+    }
+}
+
 int REFRESH_CLAUSE_DATABASE(CDCLSolver* solver) {
-    // candidates = empty list
     int candidate_cap = 64;
-    Clause** candidates = (Clause**)malloc(candidate_cap * sizeof(Clause*));
+    CandidateRef* candidates = (CandidateRef*)malloc(candidate_cap * sizeof(CandidateRef));
     int candidate_count = 0;
 
-    // FOR EACH clause C in solver.clauses:
     for (int i = 0; i < solver->clause_count; i++) {
-        Clause* C = solver->clauses[i];
-
-        // IF C is an original input clause:
-        //     Continue.
-        if (C == NULL || !C->is_learned) {
+        ClauseRef ref = solver->clauses[i];
+        if (ref == CLAUSE_REF_NULL || !clause_array_is_learned(&solver->arena, ref)) {
+            continue;
+        }
+        if (clause_array_is_deleted(&solver->arena, ref)) {
+            continue;
+        }
+        int size = clause_array_get_size(&solver->arena, ref);
+        if (size <= 1) {
+            continue;
+        }
+        if (is_clause_a_reason(solver, ref)) {
             continue;
         }
 
-        // IF C is already deleted:
-        //     Continue.
-        if (C->is_deleted) {
-            continue;
-        }
-
-        // IF C is a unit clause:
-        //     Continue.
-        if (C->size <= 1) {
-            continue;
-        }
-
-        // IF C is currently used as the reason for any assigned variable:
-        //     Continue.
-        if (is_clause_a_reason(solver, C)) {
-            continue;
-        }
-
-        // IF C is protected by the clause-retention policy:
-        //     Continue.
-        // (Default policy: keep highly active clauses or short clauses)
-
-        // Add C to candidates.
         if (candidate_count >= candidate_cap) {
             candidate_cap *= 2;
-            candidates = (Clause**)realloc(candidates, candidate_cap * sizeof(Clause*));
+            candidates = (CandidateRef*)realloc(candidates, candidate_cap * sizeof(CandidateRef));
         }
-        candidates[candidate_count++] = C;
+        candidates[candidate_count].ref = ref;
+        candidates[candidate_count].activity = clause_array_get_activity(&solver->arena, ref);
+        candidates[candidate_count].size = size;
+        candidate_count++;
     }
 
-    // Rank candidates from least useful to most useful
-    qsort(candidates, candidate_count, sizeof(Clause*), compare_clause_candidates);
+    qsort(candidates, candidate_count, sizeof(CandidateRef), compare_candidate_refs);
 
-    // Select the least useful candidates for deletion
-    // until the configured database budget is satisfied (delete up to half of candidates)
     int to_delete_count = candidate_count / 2;
-
     for (int i = 0; i < to_delete_count; i++) {
-        Clause* C = candidates[i];
+        ClauseRef ref = candidates[i].ref;
+        int lit0 = clause_array_get_literal(&solver->arena, ref, 0);
+        int lit1 = clause_array_get_literal(&solver->arena, ref, 1);
 
-        // Remove C from both of its watch lists.
-        if (C->size >= 2) {
-            remove_clause_from_watchlist(solver, C, C->literals[0]);
-            remove_clause_from_watchlist(solver, C, C->literals[1]);
-        }
+        remove_clause_from_watchlist(solver, ref, lit0);
+        remove_clause_from_watchlist(solver, ref, lit1);
 
-        // Mark C as deleted.
-        C->is_deleted = true;
-
-        // Release its allocated storage safely.
-        if (C->literals) {
-            free(C->literals);
-            C->literals = NULL;
-        }
+        clause_array_mark_deleted(&solver->arena, ref);
     }
-
     free(candidates);
 
-    // Compact the clause database if needed: remove deleted clauses
     int write_idx = 0;
     for (int i = 0; i < solver->clause_count; i++) {
-        Clause* C = solver->clauses[i];
-        if (C != NULL && C->is_deleted) {
-            free(C);
+        ClauseRef ref = solver->clauses[i];
+        if (ref != CLAUSE_REF_NULL && clause_array_is_deleted(&solver->arena, ref)) {
             solver->learned_clause_count--;
         } else {
-            solver->clauses[write_idx++] = C;
+            solver->clauses[write_idx++] = ref;
         }
     }
     solver->clause_count = write_idx;
 
-    // After refreshing the database:
-    // solver.next_refresh_conflict = solver.conflict_count + solver.refresh_interval
-    solver->next_refresh_conflict = solver->conflict_count + solver->refresh_interval;
+    if (solver->current_level == 0 && solver->arena.wasted_words > 0) {
+        COMPACT_CLAUSE_DATABASE(solver);
+    }
 
+    solver->next_refresh_conflict = solver->conflict_count + solver->refresh_interval;
     return SUCCESS;
 }
 
@@ -966,15 +839,19 @@ int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables) {
         return FAILURE;
     }
 
-    // INITIALIZE_TRAIL(solver)
+    if (!solver->arena.memory) {
+        if (!clause_array_init(&solver->arena, 0)) {
+            return FAILURE;
+        }
+    }
+
     solver->trail_capacity = variables > 0 ? variables : 16;
     solver->trail = (int*)malloc(solver->trail_capacity * sizeof(int));
-    if(solver->trail==NULL){
+    if (solver->trail == NULL) {
         return FAILURE;
     }
     solver->trail_size = 0;
 
-    // INITIALIZE_TRAIL_LIMITS(solver)
     solver->trail_limits_capacity = 32;
     solver->trail_limits = (int*)malloc(solver->trail_limits_capacity * sizeof(int));
     if (solver->trail_limits == NULL) {
@@ -982,67 +859,56 @@ int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables) {
     }
     solver->trail_limits_size = 0;
 
-    // INITIALIZE_WATCH_LISTS(solver, variables)
     int watch_list_total = 2 * variables + 1;
-    solver->watch_lists = (Clause***)malloc(watch_list_total * sizeof(Clause**));
+    solver->watch_lists = (WatchList*)malloc(watch_list_total * sizeof(WatchList));
     if (solver->watch_lists == NULL) {
         return FAILURE;
     }
-    solver->watch_list_sizes = (int*)calloc(watch_list_total, sizeof(int));
-    solver->watch_list_capacities = (int*)malloc(watch_list_total * sizeof(int));
-    if (solver->watch_list_capacities == NULL) {
+    for (int i = 0; i < watch_list_total; i++) {
+        if (!watch_list_init(&solver->watch_lists[i], 4)) {
+            return FAILURE;
+        }
+    }
+
+    solver->clause_capacity = 64;
+    solver->clauses = (ClauseRef*)malloc(solver->clause_capacity * sizeof(ClauseRef));
+    if (solver->clauses == NULL) {
         return FAILURE;
     }
-    for (int i = 0; i < watch_list_total; i++) {
-        solver->watch_list_capacities[i] = 4;
-        solver->watch_lists[i] = (Clause**)malloc(solver->watch_list_capacities[i] * sizeof(Clause*));
-    }
-
-    // INITIALIZE_CLAUSE_DATABASE(solver)
-    solver->clause_capacity = 64;
-    solver->clauses = (Clause**)malloc(solver->clause_capacity * sizeof(Clause*));
     solver->clause_count = 0;
 
-    // INITIALIZE_SEEN_ARRAY(solver, variables)
     solver->seen = (bool*)calloc(variables + 1, sizeof(bool));
 
-    // INITIALIZE_BUMP_VARIABLES(solver, variables)
     solver->bump_variables_capacity = 32;
     solver->bump_variables = (int*)malloc(solver->bump_variables_capacity * sizeof(int));
     solver->bump_variables_count = 0;
 
-    // INITIALIZE_SAVED_POLARITY(solver, variables)
     solver->saved_polarity = (AssignmentValue*)malloc((variables + 1) * sizeof(AssignmentValue));
     for (int i = 1; i <= variables; i++) {
         solver->saved_polarity[i] = UNASSIGNED;
     }
 
+    solver->learned_literals_capacity = 32;
+    solver->learned_literals = (int*)malloc(solver->learned_literals_capacity * sizeof(int));
+
     return SUCCESS;
 }
 
 void UPDATE_BRANCHING_HEURISTIC(CDCLSolver* solver) {
-    // FOR EACH variable in solver.bump_variables:
-    //     VSIDS_BUMP(solver.vsids, variable).
     for (int i = 0; i < solver->bump_variables_count; i++) {
         vsids_bump(&solver->vsids, (size_t)solver->bump_variables[i]);
     }
-
-    // VSIDS_DECAY(solver.vsids).
     vsids_decay(&solver->vsids);
 }
 
 int SELECT_BRANCH_VARIABLE(CDCLSolver* solver) {
-    // variable = VSIDS_SELECT_VARIABLE(solver.vsids, solver.assignment)
     size_t var = vsids_select_variable(&solver->vsids, (const int*)solver->assignment);
-
-    // Return variable.
     return (var == NO_VARIABLE) ? 0 : (int)var;
 }
 
 void DESTROY_SOLVER(CDCLSolver* solver) {
     if (!solver) return;
 
-    // Release the trail and decision-level arrays.
     if (solver->assignment) {
         free(solver->assignment);
         solver->assignment = NULL;
@@ -1073,27 +939,17 @@ void DESTROY_SOLVER(CDCLSolver* solver) {
     solver->trail_limits_size = 0;
     solver->trail_limits_capacity = 0;
 
-    // Release the propagation and watch-list storage.
     if (solver->watch_lists) {
         int watch_list_total = 2 * solver->number_of_variables + 1;
         for (int i = 0; i < watch_list_total; i++) {
-            if (solver->watch_lists[i]) {
-                free(solver->watch_lists[i]);
-            }
+            watch_list_destroy(&solver->watch_lists[i]);
         }
         free(solver->watch_lists);
         solver->watch_lists = NULL;
     }
-    if (solver->watch_list_sizes) {
-        free(solver->watch_list_sizes);
-        solver->watch_list_sizes = NULL;
-    }
-    if (solver->watch_list_capacities) {
-        free(solver->watch_list_capacities);
-        solver->watch_list_capacities = NULL;
-    }
 
-    // Release the seen array and conflict-analysis scratch storage.
+    clause_array_destroy(&solver->arena);
+
     if (solver->seen) {
         free(solver->seen);
         solver->seen = NULL;
@@ -1105,37 +961,25 @@ void DESTROY_SOLVER(CDCLSolver* solver) {
     solver->bump_variables_count = 0;
     solver->bump_variables_capacity = 0;
 
-    // Release each clause exactly once according to its owner.
-    // Learned clauses are owned and allocated by the solver.
     if (solver->clauses) {
-        for (int i = 0; i < solver->clause_count; i++) {
-            Clause* C = solver->clauses[i];
-            if (C != NULL && C->is_learned) {
-                if (C->literals) {
-                    free(C->literals);
-                    C->literals = NULL;
-                }
-                free(C);
-                solver->clauses[i] = NULL;
-            }
-        }
-        // Release the clause database.
         free(solver->clauses);
         solver->clauses = NULL;
     }
     solver->clause_count = 0;
     solver->clause_capacity = 0;
 
-    // VSIDS_CLEANUP(solver.vsids).
+    if (solver->learned_literals) {
+        free(solver->learned_literals);
+        solver->learned_literals = NULL;
+    }
+    solver->learned_literals_capacity = 0;
+
     vsids_cleanup(&solver->vsids);
     memset(&solver->vsids, 0, sizeof(solver->vsids));
 
-    // Destroy the MemoryManager only after every dependent
-    // subsystem has finished using it.
     cleanup_memory_manager(&solver->memory_manager);
     memset(&solver->memory_manager, 0, sizeof(solver->memory_manager));
 
-    // Clear all pointers and reset the solver state.
     solver->number_of_variables = 0;
     solver->current_level = 0;
     solver->propagation_head = 0;

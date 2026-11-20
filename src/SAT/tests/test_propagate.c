@@ -30,7 +30,7 @@ static void propagate_empty_trail(void) {
     TEST_ASSERT(rc == 0, "make_solver failed");
 
     /* Trail is empty (no unit clauses), propagation head is already at end */
-    Clause* conflict = PROPAGATE(&solver);
+    ClauseRef conflict = PROPAGATE(&solver);
     TEST_ASSERT(conflict == NO_CONFLICT, "expected NO_CONFLICT on empty trail");
 
     DESTROY_SOLVER(&solver);
@@ -55,7 +55,7 @@ static void propagate_single_unit_clause(void) {
     /* After INITIALIZE_SOLVER, literal 1 should already be enqueued */
     TEST_ASSERT(solver.assignment[1] == TRUE, "unit clause should force var1=TRUE");
 
-    Clause* conflict = PROPAGATE(&solver);
+    ClauseRef conflict = PROPAGATE(&solver);
     TEST_ASSERT(conflict == NO_CONFLICT, "unit clause: expected NO_CONFLICT");
     TEST_ASSERT(solver.propagation_head == solver.trail_size,
                 "propagation_head should equal trail_size after full propagation");
@@ -81,7 +81,7 @@ static void propagate_binary_unit(void) {
     solver.current_level = 1;
     ENQUEUE(&solver, -1, NO_REASON);   /* var1 = FALSE */
 
-    Clause* conflict = PROPAGATE(&solver);
+    ClauseRef conflict = PROPAGATE(&solver);
 
     TEST_ASSERT(conflict == NO_CONFLICT,       "binary unit: expected NO_CONFLICT");
     TEST_ASSERT(solver.assignment[2] == TRUE,  "var2 should be forced TRUE");
@@ -109,7 +109,7 @@ static void propagate_conflict_detected(void) {
     ENQUEUE(&solver, -2, NO_REASON);   /* var2 = FALSE */
     ENQUEUE(&solver, -1, NO_REASON);   /* var1 = FALSE */
 
-    Clause* conflict = PROPAGATE(&solver);
+    ClauseRef conflict = PROPAGATE(&solver);
 
     TEST_ASSERT(conflict != NO_CONFLICT, "expected a conflict clause");
 
@@ -135,7 +135,7 @@ static void propagate_watch_swap_replacement(void) {
     solver.current_level = 1;
     ENQUEUE(&solver, -1, NO_REASON);   /* var1 = FALSE */
 
-    Clause* conflict = PROPAGATE(&solver);
+    ClauseRef conflict = PROPAGATE(&solver);
 
     TEST_ASSERT(conflict == NO_CONFLICT, "watch-swap: expected NO_CONFLICT");
     /* var2 and var3 must remain unassigned (no forced unit) */
@@ -167,7 +167,7 @@ static void propagate_clause_already_satisfied(void) {
     ENQUEUE(&solver, 2, NO_REASON);    /* var2 = TRUE  (satisfies clause) */
     ENQUEUE(&solver, -1, NO_REASON);   /* var1 = FALSE (triggers watch)   */
 
-    Clause* conflict = PROPAGATE(&solver);
+    ClauseRef conflict = PROPAGATE(&solver);
 
     TEST_ASSERT(conflict == NO_CONFLICT,
                 "satisfied clause: expected NO_CONFLICT");
@@ -195,7 +195,7 @@ static void propagate_multiple_implications_chain(void) {
     solver.current_level = 1;
     ENQUEUE(&solver, 1, NO_REASON);    /* Decision: var1 = TRUE */
 
-    Clause* conflict = PROPAGATE(&solver);
+    ClauseRef conflict = PROPAGATE(&solver);
 
     TEST_ASSERT(conflict == NO_CONFLICT,         "chain: expected NO_CONFLICT");
     TEST_ASSERT(solver.assignment[1] == TRUE,  "var1 should be TRUE");
@@ -231,7 +231,7 @@ static void propagate_stops_at_first_conflict(void) {
     ENQUEUE(&solver, -3, NO_REASON);   /* var3 = FALSE */
     ENQUEUE(&solver, -1, NO_REASON);   /* var1 = FALSE → triggers both clauses */
 
-    Clause* conflict = PROPAGATE(&solver);
+    ClauseRef conflict = PROPAGATE(&solver);
 
     TEST_ASSERT(conflict != NO_CONFLICT,
                 "should detect at least one conflict");

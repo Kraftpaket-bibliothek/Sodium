@@ -29,7 +29,7 @@ static void enqueue_positive_literal(void) {
     TEST_ASSERT(solver.assignment[1] == TRUE,  "assignment[1] should be TRUE");
     TEST_ASSERT(solver.trail_size    == 1,     "trail_size should be 1");
     TEST_ASSERT(solver.trail[0]      == 1,     "trail[0] should be 1");
-    TEST_ASSERT(solver.reason[1]     == NULL,  "reason should be NULL");
+    TEST_ASSERT(solver.reason[1]     == NO_REASON, "reason should be NO_REASON");
 
     DESTROY_SOLVER(&solver);
 }
@@ -95,16 +95,15 @@ static void enqueue_with_reason_clause(void) {
     int rc = make_solver(&solver, 3, NULL, 0);
     TEST_ASSERT(rc == 0, "make_solver failed");
 
-    /* Create a dummy clause and pass as reason */
+    /* Create a dummy clause in arena and pass as reason */
     int lits[] = {-1, 2};
-    Clause* reason = make_clause(lits, 2, false);
+    ClauseRef reason = clause_array_allocate(&solver.arena, lits, 2, false, 0.0f);
 
     ENQUEUE(&solver, 2, reason);
 
-    TEST_ASSERT(solver.reason[2] == reason, "reason pointer not stored correctly");
+    TEST_ASSERT(solver.reason[2] == reason, "reason offset not stored correctly");
 
     DESTROY_SOLVER(&solver);
-    free_clause(reason);
 }
 
 /* ── 1.6 ── */

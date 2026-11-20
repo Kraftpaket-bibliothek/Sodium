@@ -1,8 +1,34 @@
 .DS_Store
-.venv
+.venv/
 __pycache__/
 *.pyc
 *.o
 *.dylib
 *.so
 sodium
+
+# Generated / temporary files
+*.dySM
+
+# Generated implementation files (only when they follow this naming convention)
+*.generated.c
+*.generated.h
+.gitignore
+# Build artifacts
+build/
+dist/
+*.out
+# macOS debug symbol bundles
+*.dSYM/
+
+# Compiled test executables
+src/SAT/tests/test_10m_clauses
+src/SAT/tests/test_analyze_conflict
+src/SAT/tests/test_backtrack
+src/SAT/tests/test_benchmarks
+src/SAT/tests/test_database_refresh
+src/SAT/tests/test_enqueue_trail
+src/SAT/tests/test_memory_allocation
+src/SAT/tests/test_propagate
+src/SAT/tests/test_restart
+src/SAT/tests/test_solve_integration

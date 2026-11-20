@@ -1,5 +1,5 @@
 # ============================================================================
-# Sodium - Classical Non-LLM NLP Methodology
+# Sodium - Deterministic Classical NLP Methodology
 # File: src/NLP/NLPAlgo/syntactic_parsing/pos_tagger.py
 # Description: Part-of-speech tagging and deontic modal verb classification.
 # ============================================================================

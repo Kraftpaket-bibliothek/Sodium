@@ -1,10 +1,11 @@
 CC       = gcc
 CFLAGS   = -std=c11 -Wall -Wextra -g -fsanitize=address,undefined
-INCLUDES = -I../CDCL
-CDCL_SRC = ../CDCL/CDCL.c ../CDCL/VSIDS.c ../CDCL/memory.c
+INCLUDES = -I../CDCL -I../CDCL/Clauses
+CDCL_SRC = ../CDCL/CDCL.c ../CDCL/VSIDS.c ../CDCL/memory.c ../CDCL/Clauses/clause_array.c
 LDFLAGS  = -lm
 
-TESTS = test_memory_allocation \
+TESTS = test_clause_array \
+        test_memory_allocation \
         test_enqueue_trail \
         test_propagate \
         test_analyze_conflict \
@@ -13,6 +14,8 @@ TESTS = test_memory_allocation \
         test_database_refresh \
         test_solve_integration \
         test_benchmarks \
+        test_electronic_board \
+        test_zebra_puzzle \
         test_10m_clauses
 
 .PHONY: all run clean
