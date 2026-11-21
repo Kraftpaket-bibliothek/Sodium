@@ -198,6 +198,7 @@ Sodium’s architecture adheres strictly to proven software engineering patterns
 | **Unified C Facade API** | `src/API.c`, `src/API.h` | High-level API for DIMACS parsing, solution verification (`sodium_api_verify_formula`), model extraction. |
 | **Mode 1 JSON SAT API** | `src/SAT/sat_api.c` | CaDiCaL-compatible in-memory JSON interface for programmatic integration with high-level languages. |
 | **Classical NLP** | `src/NLP/NLPAlgo/` | Controlled-language tokenization and logical parsing, ILR construction, exact proposition resolution, and Tseitin CNF compilation. |
+| **Dynamic Domain Matrix** | `src/NLP/NLPAlgo/entity_extraction/` | Multi-dimensional coordinate grounding ($\text{VarID}(r, c) = r \times \|C\| + c$), automatic ALO/AMO bijective grid axioms, and relational constraint synthesis. |
 | **CNF Contract** | `src/NLP/cnf_contract.py` | Pydantic-validated CNF requests, clause normalization, variable metadata, and JSON serialization. |
 | **Solver Bridge** | `src/NLP/solver_bridge.py` | Python ctypes bridge to the C CDCL JSON API. |
 | **Unified Orchestrator** | `src/sodium_orchestrator.c` | Single executable handling CLI arguments, stdin pipes, embedded Web server, and native desktop UI dispatch. |
@@ -456,9 +457,18 @@ flowchart LR
 
 ---
 
-### 📋 Full Testing & Verification Suite Summary (13 Suites, 96 Tests)
+### 📋 Full Testing & Verification Suite Summary (131 Tests Across C & Python)
 
-| Benchmark / Test Category | Suite File | Variables | Clauses | Result | Formal Verification / Specification |
+Sodium enforces continuous formal verification across two complementary testing layers: the low-level **C11 CDCL core** and the high-level **Classical NLP & Grounding Engine**.
+
+> 🔗 **Detailed Sub-Guides**:
+> - 📖 **[C CDCL SAT Solver Test & Benchmark Guide](src/SAT/tests/README.md)** — Hardware CEC miters, 10M clause stress test, Luby restarts, and T0–T7 unit tests.
+> - 📖 **[Classical NLP & Grounding Engine Test Guide](src/NLP/tests/README.md)** — 128-sentence NLP pipeline, Dynamic Domain Matrix, and Max-Planck/Saarland Exercise 31.1.
+
+#### 1. C11 CDCL SAT Solver Test Suite (13 Suites, 96 Tests)
+*See [src/SAT/tests/README.md](src/SAT/tests/README.md) for complete technical specifications.*
+
+| Benchmark / Test Category | Suite File | Variables | Clauses | Result | Formal Verification / Invariant Proved |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **10M Stress Benchmark** | `test_10m_clauses.c` | **50,000** | **10,000,000** | **✅ SAT** | **Ingested & solved in ~25–40s; 100k random clauses verified** |
 | **Zebra Puzzle (Einstein's Riddle)** | `test_zebra_puzzle.c` | 125 | 592 | **✅ SAT** | Solved 14 clues: Norwegian drinks water, Japanese owns zebra |
@@ -486,6 +496,18 @@ flowchart LR
 | **T5: Restart Policy** | `test_restart.c` | - | - | **✅ PASS (10)** | Luby sequence generator, restart limits, and arena compaction trigger |
 | **T6: Database Refresh** | `test_database_refresh.c` | - | - | **✅ PASS (8)** | Learned clause GC, activity degradation, reason protection, compaction |
 | **T7: End-to-End Solve** | `test_solve_integration.c` | - | - | **✅ PASS (11)** | Complete CDCL solver lifecycle, trivial models, phase saving |
+
+#### 2. Classical NLP & Dynamic Domain Matrix Suite (6 Modules, 35 Tests)
+*See [src/NLP/tests/README.md](src/NLP/tests/README.md) for complete technical specifications.*
+
+| Test Module | Tests | Verifications & Pipeline Milestones | Result |
+| :--- | :---: | :--- | :---: |
+| **`test_space_habitat_nlp.py`** | 1 | **128-Sentence NLP Pipeline**: 128 natural sentences $\to$ 1,326 clauses $\to$ 341 variables $\to$ solved in 0.065 ms; proved 100% unique | **✅ PASS** |
+| **`test_relational_nlp.py`** | 2 | **MPI Saarland Ex 31.1**: End-to-end 5-house riddle grounded via matrix, solved by CDCL, verified all 13 clues + UNSAT case | **✅ PASS** |
+| **`test_domain_matrix.py`** | 11 | **Dynamic Domain Matrix**: Closed-form $\text{VarID}(r, c) = r \times \|C\| + c$, Ex 31.1 exact IDs ($1..125$), 550 ALO/AMO grid axioms | **✅ PASS** |
+| **`test_logical_pipeline.py`** | 12 | **Parser & AST**: Precedence (`IFF < IMPLIES < OR < AND < NOT`), copular negation, parenthesization, syntax error rejection | **✅ PASS** |
+| **`test_contract_and_bridge.py`** | 6 | **Contract & Bridge**: `SodiumCNFRequest` Pydantic JSON schema, 0-terminators, ctypes function signature and memory lifecycle | **✅ PASS** |
+| **`test_solver_integration.py`** | 3 | **C Shared Library Bridge**: End-to-end Python NLP compile $\to$ `libsodium_sat` execution, model extraction, contradictory UNSAT | **✅ PASS** |
 
 ---
 
@@ -538,16 +560,20 @@ flowchart TD
 All test suites and benchmark drivers are fully open, reproducible, and self-contained:
 
 ```bash
+# 1. Run all 13 C CDCL SAT suites (T0 - T7 + Hardware + Zebra + 10M clauses)
 cd src/SAT/tests
+make all
+./test_electronic_board && ./test_zebra_puzzle && ./test_10m_clauses
+make clean
 
-# Run all 13 test suites sequentially (T0 - T7 + Hardware + Zebra + 10M)
-bash run_tests.sh
-
-# Or run individual verification suites
-make test_zebra_puzzle && ./test_zebra_puzzle
-make test_electronic_board && ./test_electronic_board
-make test_10m_clauses && ./test_10m_clauses
+# 2. Run all 35 Python NLP & Relational Grounding tests
+cd ../../..
+.venv/bin/python3 -m unittest discover src/NLP/tests
 ```
+
+For complete instructions, refer to:
+- 📖 [C CDCL Solver Tests & Benchmarks](src/SAT/tests/README.md)
+- 📖 [Classical NLP & Grounding Engine Tests](src/NLP/tests/README.md)
 
 ---
 
