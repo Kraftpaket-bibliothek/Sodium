@@ -6,12 +6,13 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from pydantic import ValidationError
 
 from .common.logic_types import LogicalExpression, LogicalOp
 from .entity_extraction.distance_matcher import EntityResolutionError, EntityResolver
+from .entity_extraction.domain_matrix import DomainAxisDetector, DynamicDomainMatrix
 from .logical_to_cnf import CNFCompilationError, LogicalToCNFCompiler
 from .syntactic_parsing.dependency_parser import LogicalDependencyParser, LogicalParseError
 from .tokenization_normalization.lemmatizer import LogicLemmatizer
@@ -38,7 +39,12 @@ class ClassicalNLPPipeline:
         self.parser = LogicalDependencyParser()
         self.solver_bridge = solver_bridge
 
-    def compile_text(self, raw_text: str) -> SodiumCNFRequest:
+    def compile_text(
+        self,
+        raw_text: str,
+        matrix: Optional[DynamicDomainMatrix] = None,
+        additional_clauses: Optional[Sequence[Sequence[int]]] = None,
+    ) -> SodiumCNFRequest:
         """Compile one or more controlled-language constraints into the CNF contract."""
         if not isinstance(raw_text, str) or not raw_text.strip():
             raise ValueError("Input validation failed: natural-language input cannot be empty.")
@@ -70,15 +76,28 @@ class ClassicalNLPPipeline:
             except ValueError as exc:
                 raise PipelineStageError("ILR validation", str(exc)) from exc
 
+        active_matrix = matrix
+        if active_matrix is None:
+            detected_cols = DomainAxisDetector.detect_columns(raw_text)
+            if detected_cols is not None:
+                active_matrix = DynamicDomainMatrix(columns=detected_cols)
+
         try:
-            atom_ids, variable_mapping = EntityResolver().resolve_many(
+            resolver = EntityResolver(matrix=active_matrix) if active_matrix is not None else EntityResolver()
+            atom_ids, variable_mapping = resolver.resolve_many(
                 atom for expression in expressions for atom in expression.atoms()
             )
         except EntityResolutionError as exc:
             raise PipelineStageError("entity resolution", str(exc)) from exc
 
         try:
-            result = LogicalToCNFCompiler().compile(expressions, atom_ids, variable_mapping)
+            result = LogicalToCNFCompiler().compile(
+                expressions,
+                atom_ids,
+                variable_mapping,
+                matrix=active_matrix,
+                additional_clauses=additional_clauses,
+            )
         except CNFCompilationError as exc:
             raise PipelineStageError("CNF conversion", str(exc)) from exc
 
