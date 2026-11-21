@@ -36,7 +36,8 @@ SOLVER_SRCS = \
 
 # ---- Compiler & Standard ----
 CXX         = clang++
-CXXFLAGS    = -std=c++17 -O2 -Wall -Wextra -pthread
+CXXFLAGS    = -std=c++17 -O2 -Wall -Wextra -pthread -D_GNU_SOURCE
+CFLAGS      ?= -std=c11 -O2 -Wall -Wextra -D_GNU_SOURCE
 
 # ---- Include Paths ----
 INCLUDES    = \
@@ -105,7 +106,7 @@ server: $(SOLVER_LIB)
 	@echo "========================================================"
 	@echo " Building Sodium (Headless CLI + Web Server)..."
 	@echo "========================================================"
-	$(CC) -std=c11 -O2 -Wall -Wextra -pthread \
+	$(CC) $(CFLAGS) -pthread \
 		-Isrc -Isrc/SAT -Isrc/SAT/CDCL -Isrc/NLP \
 		$(CORE_SRCS) -lm \
 		-o $(TARGET)
@@ -158,7 +159,7 @@ check_deps:
 	@echo "✓ Dependencies found."
 
 $(SOLVER_LIB): $(SOLVER_SRCS)
-	$(CC) -std=c11 -O2 -Wall -Wextra -fPIC $(SHARED_FLAG) \
+	$(CC) $(CFLAGS) -fPIC $(SHARED_FLAG) \
 		-Isrc/SAT -Isrc/SAT/CDCL $(SOLVER_SRCS) -lm -o $@
 
 .PHONY: all server deps clean check_deps
