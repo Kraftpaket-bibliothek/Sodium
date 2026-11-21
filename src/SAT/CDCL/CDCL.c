@@ -6,6 +6,23 @@
 #include <math.h>
 #include <limits.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+static inline double cdcl_get_time_ms(void) {
+    LARGE_INTEGER freq, count;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&count);
+    return ((double)count.QuadPart * 1000.0) / (double)freq.QuadPart;
+}
+#else
+#include <time.h>
+static inline double cdcl_get_time_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ((double)ts.tv_sec * 1000.0) + ((double)ts.tv_nsec / 1000000.0);
+}
+#endif
+
 bool ENQUEUE(CDCLSolver* solver, int literal, ClauseRef reason_clause);
 void ATTACH_CLAUSE(CDCLSolver* solver, ClauseRef ref);
 void DESTROY_SOLVER(CDCLSolver* solver);
@@ -18,11 +35,21 @@ static inline void CLEANUP_SOLVER(CDCLSolver* solver) {
     DESTROY_SOLVER(solver);
 }
 
-static inline void INITIALIZE_BASIC_SOLVER_STATE(CDCLSolver* solver, int variables) {
+static inline int INITIALIZE_BASIC_SOLVER_STATE(CDCLSolver* solver, int variables) {
+    if (variables < 0 || variables > SODIUM_MAX_VARIABLES) {
+        return FAILURE;
+    }
     solver->number_of_variables = variables;
-    solver->assignment = (AssignmentValue*)malloc((variables + 1) * sizeof(AssignmentValue));
-    solver->decision_level = (int*)malloc((variables + 1) * sizeof(int));
-    solver->reason = (ClauseRef*)calloc(variables + 1, sizeof(ClauseRef));
+    solver->assignment = (AssignmentValue*)malloc(((size_t)variables + 1) * sizeof(AssignmentValue));
+    solver->decision_level = (int*)malloc(((size_t)variables + 1) * sizeof(int));
+    solver->reason = (ClauseRef*)calloc((size_t)variables + 1, sizeof(ClauseRef));
+
+    if (!solver->assignment || !solver->decision_level || !solver->reason) {
+        if (solver->assignment) { free(solver->assignment); solver->assignment = NULL; }
+        if (solver->decision_level) { free(solver->decision_level); solver->decision_level = NULL; }
+        if (solver->reason) { free(solver->reason); solver->reason = NULL; }
+        return FAILURE;
+    }
 
     for (int i = 1; i <= variables; i++) {
         solver->assignment[i] = UNASSIGNED;
@@ -43,6 +70,7 @@ static inline void INITIALIZE_BASIC_SOLVER_STATE(CDCLSolver* solver, int variabl
     solver->min_learned_clauses = 100;
     solver->refresh_interval = 1000;
     solver->next_refresh_conflict = solver->refresh_interval;
+    return SUCCESS;
 }
 
 static inline void ADD_ORIGINAL_CLAUSE(CDCLSolver* solver, Clause* clause) {
@@ -70,7 +98,10 @@ static inline SolverMode INITIALIZE_UNIT_PROPAGATION(CDCLSolver* solver) {
 
 SolverMode INITIALIZE_SOLVER(CDCLSolver* solver, int variables, Clause** input_clauses, int input_clause_count) {
     memset(solver, 0, sizeof(*solver));
-    INITIALIZE_BASIC_SOLVER_STATE(solver, variables);
+    if (INITIALIZE_BASIC_SOLVER_STATE(solver, variables) != SUCCESS) {
+        CLEANUP_SOLVER(solver);
+        return (SolverMode)FAILURE;
+    }
     if (INITIALIZE_REASONING_SUBSYSTEMS(solver, variables) == FAILURE) {
         CLEANUP_SOLVER(solver);
         return (SolverMode)FAILURE;
@@ -528,7 +559,24 @@ AssignmentValue CHOOSE_POLARITY(CDCLSolver* solver, int variable) {
 }
 
 static inline SolverMode CDCL_SEARCH_LOOP(CDCLSolver* solver) {
+    uint32_t step_counter = 0;
     while (true) {
+        // Watchdog & Interruption Check (checked every 512 loop iterations)
+        if ((++step_counter & 0x1FF) == 0) {
+            if (solver->interrupt_flag && *solver->interrupt_flag) {
+                solver->solver_mode = SOLVER_INTERRUPTED;
+                return SOLVER_INTERRUPTED;
+            }
+            if (solver->deadline_ms > 0.0 && cdcl_get_time_ms() >= solver->deadline_ms) {
+                solver->solver_mode = SOLVER_TIMEOUT;
+                return SOLVER_TIMEOUT;
+            }
+            if (solver->max_conflicts > 0 && (uint64_t)solver->conflict_count >= solver->max_conflicts) {
+                solver->solver_mode = SOLVER_TIMEOUT;
+                return SOLVER_TIMEOUT;
+            }
+        }
+
         ClauseRef conflict_clause = PROPAGATE(solver);
 
         if (conflict_clause != CLAUSE_REF_NULL) {
@@ -574,10 +622,20 @@ static inline SolverMode CDCL_SEARCH_LOOP(CDCLSolver* solver) {
 
 SolverMode INITIALIZE_SOLVER_FROM_ARENA(CDCLSolver* solver, int variables) {
     ClauseArray saved_arena = solver->arena;
+    volatile sig_atomic_t* saved_interrupt = solver->interrupt_flag;
+    double saved_deadline = solver->deadline_ms;
+    uint64_t saved_max_conflicts = solver->max_conflicts;
+
     memset(solver, 0, sizeof(*solver));
     solver->arena = saved_arena;
+    solver->interrupt_flag = saved_interrupt;
+    solver->deadline_ms = saved_deadline;
+    solver->max_conflicts = saved_max_conflicts;
 
-    INITIALIZE_BASIC_SOLVER_STATE(solver, variables);
+    if (INITIALIZE_BASIC_SOLVER_STATE(solver, variables) != SUCCESS) {
+        CLEANUP_SOLVER(solver);
+        return (SolverMode)FAILURE;
+    }
     if (INITIALIZE_REASONING_SUBSYSTEMS(solver, variables) == FAILURE) {
         CLEANUP_SOLVER(solver);
         return (SolverMode)FAILURE;
@@ -829,6 +887,10 @@ int REFRESH_CLAUSE_DATABASE(CDCLSolver* solver) {
 }
 
 int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables) {
+    if (variables < 0 || variables > SODIUM_MAX_VARIABLES) {
+        return FAILURE;
+    }
+
     MemoryManager* mm_ptr = NULL;
     if (initialize_memory_manager(variables + 64, &mm_ptr) != STATUS_SUCCESS || !mm_ptr) {
         return FAILURE;
@@ -846,50 +908,65 @@ int INITIALIZE_REASONING_SUBSYSTEMS(CDCLSolver* solver, int variables) {
     }
 
     solver->trail_capacity = variables > 0 ? variables : 16;
-    solver->trail = (int*)malloc(solver->trail_capacity * sizeof(int));
+    solver->trail = (int*)malloc((size_t)solver->trail_capacity * sizeof(int));
     if (solver->trail == NULL) {
         return FAILURE;
     }
     solver->trail_size = 0;
 
     solver->trail_limits_capacity = 32;
-    solver->trail_limits = (int*)malloc(solver->trail_limits_capacity * sizeof(int));
+    solver->trail_limits = (int*)malloc((size_t)solver->trail_limits_capacity * sizeof(int));
     if (solver->trail_limits == NULL) {
         return FAILURE;
     }
     solver->trail_limits_size = 0;
 
-    int watch_list_total = 2 * variables + 1;
+    size_t watch_list_total = (size_t)2 * (size_t)variables + 1;
+    if (watch_list_total > ((size_t)2 * SODIUM_MAX_VARIABLES + 1)) {
+        return FAILURE;
+    }
     solver->watch_lists = (WatchList*)malloc(watch_list_total * sizeof(WatchList));
     if (solver->watch_lists == NULL) {
         return FAILURE;
     }
-    for (int i = 0; i < watch_list_total; i++) {
+    for (size_t i = 0; i < watch_list_total; i++) {
         if (!watch_list_init(&solver->watch_lists[i], 4)) {
             return FAILURE;
         }
     }
 
     solver->clause_capacity = 64;
-    solver->clauses = (ClauseRef*)malloc(solver->clause_capacity * sizeof(ClauseRef));
+    solver->clauses = (ClauseRef*)malloc((size_t)solver->clause_capacity * sizeof(ClauseRef));
     if (solver->clauses == NULL) {
         return FAILURE;
     }
     solver->clause_count = 0;
 
-    solver->seen = (bool*)calloc(variables + 1, sizeof(bool));
+    solver->seen = (bool*)calloc((size_t)variables + 1, sizeof(bool));
+    if (solver->seen == NULL) {
+        return FAILURE;
+    }
 
     solver->bump_variables_capacity = 32;
-    solver->bump_variables = (int*)malloc(solver->bump_variables_capacity * sizeof(int));
+    solver->bump_variables = (int*)malloc((size_t)solver->bump_variables_capacity * sizeof(int));
+    if (solver->bump_variables == NULL) {
+        return FAILURE;
+    }
     solver->bump_variables_count = 0;
 
-    solver->saved_polarity = (AssignmentValue*)malloc((variables + 1) * sizeof(AssignmentValue));
+    solver->saved_polarity = (AssignmentValue*)malloc(((size_t)variables + 1) * sizeof(AssignmentValue));
+    if (solver->saved_polarity == NULL) {
+        return FAILURE;
+    }
     for (int i = 1; i <= variables; i++) {
         solver->saved_polarity[i] = UNASSIGNED;
     }
 
     solver->learned_literals_capacity = 32;
-    solver->learned_literals = (int*)malloc(solver->learned_literals_capacity * sizeof(int));
+    solver->learned_literals = (int*)malloc((size_t)solver->learned_literals_capacity * sizeof(int));
+    if (solver->learned_literals == NULL) {
+        return FAILURE;
+    }
 
     return SUCCESS;
 }

@@ -15,6 +15,17 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <signal.h>
+
+#ifndef SODIUM_MAX_VARIABLES
+#define SODIUM_MAX_VARIABLES        10000000   /* 10 Million variables max */
+#endif
+#ifndef SODIUM_MAX_CLAUSES
+#define SODIUM_MAX_CLAUSES          10000000   /* 10 Million clauses max */
+#endif
+#ifndef SODIUM_MAX_CLAUSE_SIZE
+#define SODIUM_MAX_CLAUSE_SIZE      100000     /* 100k Literals per clause max */
+#endif
 
 /* Literal and Assignment Values */
 #ifdef UNASSIGNED
@@ -31,7 +42,10 @@ typedef enum {
     CONFLICT_ANALYSIS,
     UNSAT,
     SAT,
-    READY
+    READY,
+    SOLVER_TIMEOUT,
+    SOLVER_INTERRUPTED,
+    SOLVER_ERROR
 } SolverMode;
 
 #ifndef NO_REASON
@@ -130,6 +144,11 @@ typedef struct CDCLSolver {
     int                 min_learned_clauses;
     int                 next_refresh_conflict;
     int                 refresh_interval;
+
+    /* Execution Watchdog & Interruption */
+    volatile sig_atomic_t* interrupt_flag;     // Pointer to cancellation flag
+    double              deadline_ms;           // Monotonic time deadline in milliseconds (0 = none)
+    uint64_t            max_conflicts;         // Max conflict limit (0 = none)
 } CDCLSolver;
 
 

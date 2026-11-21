@@ -107,6 +107,10 @@ static bool parse_dimacs_into_solver(const char* dimacs_str, SodiumSolver* solve
                     char* end = NULL;
                     long vars = strtol(p, &end, 10);
                     if (end != p && vars > 0) {
+                        if (vars > SODIUM_MAX_VARIABLES) {
+                            LOG_ERROR("API", "DIMACS declared vars (%ld) exceeds bound (%d)", vars, SODIUM_MAX_VARIABLES);
+                            return false;
+                        }
                         max_var = (int)vars;
                     }
                     p = end ? end : p;
@@ -126,6 +130,10 @@ static bool parse_dimacs_into_solver(const char* dimacs_str, SodiumSolver* solve
         }
 
         p = end;
+        if (lit < -SODIUM_MAX_VARIABLES || lit > SODIUM_MAX_VARIABLES) {
+            LOG_ERROR("API", "DIMACS literal out of safety bounds: %ld", lit);
+            return false;
+        }
         int lit_val = (int)lit;
         sodium_solver_add_literal(solver, lit_val);
 
@@ -180,7 +188,9 @@ int sodium_api_solve_dimacs(const char* dimacs_str, char** out_json_response) {
     double t_elapsed_ms = get_time_ms() - t_start;
 
     const char* status_str = (status_code == SODIUM_STATUS_SATISFIABLE) ? "SATISFIABLE" :
-                            ((status_code == SODIUM_STATUS_UNSATISFIABLE) ? "UNSATISFIABLE" : "UNKNOWN");
+                            ((status_code == SODIUM_STATUS_UNSATISFIABLE) ? "UNSATISFIABLE" :
+                            ((status_code == SODIUM_STATUS_TIMEOUT) ? "TIMEOUT" :
+                            ((status_code == SODIUM_STATUS_INTERRUPTED) ? "INTERRUPTED" : "UNKNOWN")));
 
     int final_var_count = sodium_solver_get_variable_count(solver);
     if (final_var_count > max_var) max_var = final_var_count;
@@ -298,12 +308,4 @@ int sodium_api_verify_formula(
 
     sodium_solver_destroy(solver);
     return 0;
-}
-
-void sodium_api_interrupt(void) {
-    // Interruption flag hook
-}
-
-void sodium_api_reset(void) {
-    // Global reset hook
 }

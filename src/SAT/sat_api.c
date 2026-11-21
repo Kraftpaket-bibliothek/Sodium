@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <math.h>
+#include <limits.h>
 
 #if __has_include("CDCL/CDCL.h")
 #include "CDCL/CDCL.h"
@@ -395,6 +396,33 @@ static JsonValue* json_object_get(const JsonValue* obj, const char* key) {
 // SECTION 3: IN-MEMORY SODIUM SOLVER CONSTRUCT
 // ============================================================================
 
+#if defined(_WIN32)
+#include <windows.h>
+static inline double sat_api_get_time_ms(void) {
+    LARGE_INTEGER freq, count;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&count);
+    return ((double)count.QuadPart * 1000.0) / (double)freq.QuadPart;
+}
+#else
+#include <time.h>
+static inline double sat_api_get_time_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ((double)ts.tv_sec * 1000.0) + ((double)ts.tv_nsec / 1000000.0);
+}
+#endif
+
+static volatile sig_atomic_t g_sodium_global_interrupt = 0;
+
+void sodium_api_interrupt(void) {
+    g_sodium_global_interrupt = 1;
+}
+
+void sodium_api_reset(void) {
+    g_sodium_global_interrupt = 0;
+}
+
 struct SodiumSolver {
     CDCLSolver  cdcl;
     ClauseArray base_arena;
@@ -418,10 +446,26 @@ struct SodiumSolver {
     int         max_variable;
     int         last_status;
     bool        has_empty_clause;
+
+    double      timeout_seconds;
+    volatile sig_atomic_t* interrupt_flag;
 };
+
+void sodium_solver_set_timeout(SodiumSolver* solver, double timeout_seconds) {
+    if (solver) {
+        solver->timeout_seconds = timeout_seconds > 0.0 ? timeout_seconds : 0.0;
+    }
+}
+
+void sodium_solver_set_interrupt_flag(SodiumSolver* solver, volatile sig_atomic_t* flag) {
+    if (solver) {
+        solver->interrupt_flag = flag ? flag : &g_sodium_global_interrupt;
+    }
+}
 
 SodiumSolver* sodium_solver_create(void) {
     SodiumSolver* s = (SodiumSolver*)calloc(1, sizeof(SodiumSolver));
+    if (!s) return NULL;
     clause_array_init(&s->base_arena, 0);
 
     s->current_clause_cap = 16;
@@ -434,6 +478,8 @@ SodiumSolver* sodium_solver_create(void) {
     s->failed_core = (int*)malloc(s->failed_core_cap * sizeof(int));
 
     s->last_status = SODIUM_STATUS_UNKNOWN;
+    s->interrupt_flag = &g_sodium_global_interrupt;
+    s->timeout_seconds = 0.0;
     return s;
 }
 
@@ -464,14 +510,29 @@ void sodium_solver_add_literal(SodiumSolver* s, int lit) {
         s->clause_count++;
         s->current_clause_len = 0;
     } else {
+        if (lit == INT_MIN) {
+            s->has_empty_clause = true;
+            return;
+        }
         int v = abs(lit);
+        if (v > SODIUM_MAX_VARIABLES) {
+            s->has_empty_clause = true;
+            return;
+        }
         if (v > s->max_variable) {
             s->max_variable = v;
         }
 
+        if (s->current_clause_len >= SODIUM_MAX_CLAUSE_SIZE) {
+            return; // Safety guard: ignore literals exceeding clause bound
+        }
+
         if (s->current_clause_len >= s->current_clause_cap) {
-            s->current_clause_cap *= 2;
-            s->current_clause = (int*)realloc(s->current_clause, s->current_clause_cap * sizeof(int));
+            size_t new_cap = s->current_clause_cap * 2;
+            int* new_arr = (int*)realloc(s->current_clause, new_cap * sizeof(int));
+            if (!new_arr) return;
+            s->current_clause = new_arr;
+            s->current_clause_cap = new_cap;
         }
         s->current_clause[s->current_clause_len++] = lit;
     }
@@ -518,10 +579,23 @@ int sodium_solver_solve(SodiumSolver* s) {
         return s->last_status;
     }
 
+    if (s->max_variable > SODIUM_MAX_VARIABLES || s->clause_count > SODIUM_MAX_CLAUSES) {
+        s->last_status = SODIUM_STATUS_RESOURCE_LIMIT;
+        return s->last_status;
+    }
+
     int var_count = s->max_variable > 0 ? s->max_variable : 1;
 
     // Destroy previous CDCL search state
     DESTROY_SOLVER(&s->cdcl);
+
+    // Pass watchdog settings
+    s->cdcl.interrupt_flag = s->interrupt_flag ? s->interrupt_flag : &g_sodium_global_interrupt;
+    if (s->timeout_seconds > 0.0) {
+        s->cdcl.deadline_ms = sat_api_get_time_ms() + (s->timeout_seconds * 1000.0);
+    } else {
+        s->cdcl.deadline_ms = 0.0;
+    }
 
     // Initialize s->cdcl.arena and clone base_arena words
     size_t needed_words = s->base_arena.used_words + s->assumption_count * 3 + 16;
@@ -542,7 +616,7 @@ int sodium_solver_solve(SodiumSolver* s) {
     // Execute CDCL search loop directly from arena
     SolverMode mode = SOLVE_ARENA(&s->cdcl, var_count);
 
-    // CaDiCaL convention: 10 = SAT, 20 = UNSAT, 0 = UNKNOWN
+    // CaDiCaL convention: 10 = SAT, 20 = UNSAT, 30 = TIMEOUT, 40 = INTERRUPTED, 0 = UNKNOWN
     if (mode == SAT) {
         s->last_status = SODIUM_STATUS_SATISFIABLE;
 
@@ -574,6 +648,10 @@ int sodium_solver_solve(SodiumSolver* s) {
                 s->failed_core[s->failed_core_count++] = a_lit;
             }
         }
+    } else if (mode == SOLVER_TIMEOUT) {
+        s->last_status = SODIUM_STATUS_TIMEOUT;
+    } else if (mode == SOLVER_INTERRUPTED) {
+        s->last_status = SODIUM_STATUS_INTERRUPTED;
     } else {
         s->last_status = SODIUM_STATUS_UNKNOWN;
     }
@@ -664,10 +742,19 @@ int sodium_api_solve_json(const char* json_request, char** out_json_response) {
         }
     }
 
+    // 2.5 Ingest timeout configuration
+    JsonValue* cfg_val = json_object_get(root, "solver_config");
+    JsonValue* timeout_val = cfg_val ? json_object_get(cfg_val, "timeout_seconds") : NULL;
+    if (timeout_val && timeout_val->type == JSON_VAL_NUMBER && timeout_val->u.number > 0) {
+        sodium_solver_set_timeout(solver, timeout_val->u.number);
+    }
+
     // 3. Execute Solver
     int status_code = sodium_solver_solve(solver);
     const char* status_str = (status_code == SODIUM_STATUS_SATISFIABLE) ? "SATISFIABLE" :
-                            ((status_code == SODIUM_STATUS_UNSATISFIABLE) ? "UNSATISFIABLE" : "UNKNOWN");
+                            ((status_code == SODIUM_STATUS_UNSATISFIABLE) ? "UNSATISFIABLE" :
+                            ((status_code == SODIUM_STATUS_TIMEOUT) ? "TIMEOUT" :
+                            ((status_code == SODIUM_STATUS_INTERRUPTED) ? "INTERRUPTED" : "UNKNOWN")));
 
     // 4. Construct JSON Response adhering strictly to user schema
     StringBuilder sb;
@@ -682,10 +769,8 @@ int sodium_api_solve_json(const char* json_request, char** out_json_response) {
     sb_append_str(&sb, ",\n");
 
     // "solver_config"
-    JsonValue* cfg_val = json_object_get(root, "solver_config");
     sb_append_str(&sb, "  \"solver_config\": {\n");
     JsonValue* name_val = cfg_val ? json_object_get(cfg_val, "name") : NULL;
-    JsonValue* timeout_val = cfg_val ? json_object_get(cfg_val, "timeout_seconds") : NULL;
     JsonValue* verbose_val = cfg_val ? json_object_get(cfg_val, "verbose") : NULL;
 
     sb_append_str(&sb, "    \"name\": ");

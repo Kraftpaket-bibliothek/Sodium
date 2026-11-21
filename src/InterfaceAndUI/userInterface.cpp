@@ -11,6 +11,9 @@
 #include <memory>
 #include <map>
 #include <set>
+#include <thread>
+#include <atomic>
+#include <mutex>
 #include "../API.h"
 
 namespace SodiumPlugin {
@@ -116,11 +119,19 @@ namespace SodiumPlugin {
                 out_result.conflict_reasons.push_back("Contradiction proven by CDCL 1-UIP conflict analysis: no valid assignment exists.");
                 return true;
             }
+        } else if (rc == 0 && status == 40) { // INTERRUPTED
+            out_result.status = VerificationStatus::INTERRUPTED;
+            out_result.conflict_reasons.push_back("Verification was cancelled by user.");
+            return true;
+        } else if (rc == 0 && status == 30) { // TIMEOUT
+            out_result.status = VerificationStatus::SYSTEM_ERROR;
+            out_result.conflict_reasons.push_back("Verification exceeded time limit.");
+            return false;
         }
 
-        // Fallback simulation if solver returns unknown
-        out_result.status = VerificationStatus::VALID_CONFIGURATION;
-        return true;
+        // Fallback if solver fails or returns error
+        out_result.status = VerificationStatus::SYSTEM_ERROR;
+        return false;
     }
 
     inline void API_InterruptVerification() {
@@ -458,9 +469,95 @@ public:
         return ss.str();
     }
 
+    std::thread worker_thread;
+    std::atomic<bool> is_verifying{false};
+    std::mutex results_mutex;
+    bool has_pending_update{false};
+    SodiumPlugin::VerificationResult pending_results;
+    SodiumPlugin::SystemMetricSummary pending_metrics;
+    bool pending_ok{false};
+    std::map<int, std::string> pending_var_map;
+    WorkspaceMode pending_mode{WorkspaceMode::GUIDED_RULE_BUILDER};
+
+    ~SodiumUIController() {
+        if (is_verifying.load()) {
+            SodiumPlugin::API_InterruptVerification();
+        }
+        if (worker_thread.joinable()) {
+            worker_thread.join();
+        }
+    }
+
+    void PollAsyncResults() {
+        if (has_pending_update) {
+            std::lock_guard<std::mutex> lock(results_mutex);
+            if (has_pending_update) {
+                if (worker_thread.joinable()) {
+                    worker_thread.join();
+                }
+                results = pending_results;
+                metrics = pending_metrics;
+                bool ok = pending_ok;
+                has_pending_update = false;
+
+                if (ok && results.status == SodiumPlugin::VerificationStatus::VALID_CONFIGURATION) {
+                    AddLog("SUCCESS", "System verified! A fully valid configuration was synthesized.", SodiumTheme::STATUS_VERIFIED_GREEN);
+
+                    // Populate readable component states
+                    results.configuration.clear();
+                    if (pending_mode == WorkspaceMode::GUIDED_RULE_BUILDER) {
+                        int idx = 1;
+                        for (const auto& kv : pending_var_map) {
+                            bool val = (idx % 2 != 0); // Deterministic assignment
+                            results.configuration.push_back({
+                                kv.second,
+                                kv.first,
+                                val,
+                                val ? "Enabled by system rules" : "Disabled to prevent conflict",
+                                (idx % (int)rules.size()) + 1
+                            });
+                            idx++;
+                        }
+                    } else {
+                        for (int v = 1; v <= metrics.active_components; ++v) {
+                            bool val = (v % 2 == 0);
+                            results.configuration.push_back({
+                                "Component_" + std::to_string(v),
+                                v,
+                                val,
+                                val ? "Active in valid state" : "Inactive in valid state",
+                                1
+                            });
+                        }
+                    }
+                } else if (results.status == SodiumPlugin::VerificationStatus::INTERRUPTED) {
+                    AddLog("HALT", "Verification paused / interrupted by user.", SodiumTheme::STATUS_CHECKING_AMBER);
+                } else if (results.status == SodiumPlugin::VerificationStatus::CONFLICT_DETECTED) {
+                    AddLog("CONFLICT", "Contradiction found! Conflicting rules have been highlighted.", SodiumTheme::STATUS_CONFLICT_RED);
+
+                    // Highlight the conflicting rule cards
+                    for (int conflict_id : results.conflicting_rule_ids) {
+                        for (auto& r : rules) {
+                            if (r.id == conflict_id) {
+                                r.is_conflicted = true;
+                            }
+                        }
+                    }
+                } else {
+                    AddLog("ERROR", "Verification encountered a problem with inputs or timed out.", SodiumTheme::STATUS_CONFLICT_RED);
+                }
+            }
+        }
+    }
+
     void TriggerVerification() {
+        if (is_verifying.load()) {
+            AddLog("WARN", "Verification already in progress...", SodiumTheme::STATUS_CHECKING_AMBER);
+            return;
+        }
+
         results.status = SodiumPlugin::VerificationStatus::VERIFYING;
-        AddLog("VERIFY", "Checking all system rules for consistency...", SodiumTheme::ACCENT_ROYAL_PURPLE);
+        AddLog("VERIFY", "Checking all system rules for consistency in background...", SodiumTheme::ACCENT_ROYAL_PURPLE);
 
         // Reset conflict highlights on all cards
         for (auto& r : rules) {
@@ -476,58 +573,32 @@ public:
             formula_to_solve = direct_formula_buffer;
         }
 
-        bool ok = SodiumPlugin::API_VerifyProblem(formula_to_solve.c_str(), tuning, results, metrics);
-
-        if (ok && results.status == SodiumPlugin::VerificationStatus::VALID_CONFIGURATION) {
-            AddLog("SUCCESS", "System verified! A fully valid configuration was synthesized.", SodiumTheme::STATUS_VERIFIED_GREEN);
-
-            // Populate readable component states
-            results.configuration.clear();
-            if (current_mode == WorkspaceMode::GUIDED_RULE_BUILDER) {
-                int idx = 1;
-                for (const auto& kv : var_map) {
-                    bool val = (idx % 2 != 0); // Deterministic assignment
-                    results.configuration.push_back({
-                        kv.second,
-                        kv.first,
-                        val,
-                        val ? "Enabled by system rules" : "Disabled to prevent conflict",
-                        (idx % (int)rules.size()) + 1
-                    });
-                    idx++;
-                }
-            } else {
-                for (int v = 1; v <= metrics.active_components; ++v) {
-                    bool val = (v % 2 == 0);
-                    results.configuration.push_back({
-                        "Component_" + std::to_string(v),
-                        v,
-                        val,
-                        val ? "Active in valid state" : "Inactive in valid state",
-                        1
-                    });
-                }
-            }
-        } else if (results.status == SodiumPlugin::VerificationStatus::CONFLICT_DETECTED) {
-            AddLog("CONFLICT", "Contradiction found! Conflicting rules have been highlighted.", SodiumTheme::STATUS_CONFLICT_RED);
-
-            // Highlight the conflicting rule cards
-            for (int conflict_id : results.conflicting_rule_ids) {
-                for (auto& r : rules) {
-                    if (r.id == conflict_id) {
-                        r.is_conflicted = true;
-                    }
-                }
-            }
-        } else {
-            AddLog("ERROR", "Verification encountered a problem with inputs.", SodiumTheme::STATUS_CONFLICT_RED);
+        if (worker_thread.joinable()) {
+            worker_thread.join();
         }
+
+        is_verifying = true;
+        has_pending_update = false;
+
+        worker_thread = std::thread([this, formula_to_solve, var_map, cur_mode = current_mode, cur_tuning = tuning]() {
+            SodiumPlugin::VerificationResult local_results;
+            SodiumPlugin::SystemMetricSummary local_metrics;
+            bool ok = SodiumPlugin::API_VerifyProblem(formula_to_solve.c_str(), cur_tuning, local_results, local_metrics);
+
+            std::lock_guard<std::mutex> lock(results_mutex);
+            pending_results = local_results;
+            pending_metrics = local_metrics;
+            pending_ok = ok;
+            pending_var_map = var_map;
+            pending_mode = cur_mode;
+            has_pending_update = true;
+            is_verifying = false;
+        });
     }
 
     void TriggerInterrupt() {
         SodiumPlugin::API_InterruptVerification();
-        results.status = SodiumPlugin::VerificationStatus::INTERRUPTED;
-        AddLog("HALT", "Verification paused by user.", SodiumTheme::STATUS_CHECKING_AMBER);
+        AddLog("HALT", "Interrupt signal sent to solver...", SodiumTheme::STATUS_CHECKING_AMBER);
     }
 
     void TriggerReset() {
@@ -792,7 +863,8 @@ static void RenderTopBar(SodiumUIController& ctrl) {
         // Verification Action Button
         ImGui::PushStyleColor(ImGuiCol_Button, SodiumTheme::ACCENT_ROYAL_PURPLE);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, SodiumTheme::ACCENT_VIBRANT_VIOLET);
-        if (ImGui::Button(" Verify System [F5] ", ImVec2(140, 0))) {
+        const char* vbtn_label = ctrl.is_verifying.load() ? " Verifying... " : " Verify System [F5] ";
+        if (ImGui::Button(vbtn_label, ImVec2(140, 0)) && !ctrl.is_verifying.load()) {
             ctrl.TriggerVerification();
         }
         ImGui::PopStyleColor(2);
@@ -1109,6 +1181,7 @@ void SodiumUI_RenderFrame() {
     }
 
     SodiumUIController& ctrl = *g_ui_controller;
+    ctrl.PollAsyncResults();
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
