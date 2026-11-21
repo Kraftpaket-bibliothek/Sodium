@@ -27,6 +27,9 @@ RUN make server
 # Stage 2: Minimal Production Runtime
 FROM python:3.12-slim-bookworm AS runner
 
+# Create non-root unprivileged application user
+RUN useradd -m -u 10001 -s /bin/bash sodiumuser
+
 WORKDIR /app
 
 # Copy Python site-packages from builder stage
@@ -40,6 +43,12 @@ COPY --from=builder /app/libsodium_sat.* /app/
 # Copy Python NLP modules and source files
 COPY --from=builder /app/src /app/src
 COPY --from=builder /app/requirements.txt /app/requirements.txt
+
+# Grant ownership to unprivileged user
+RUN chown -R sodiumuser:sodiumuser /app
+
+# Switch to non-root user
+USER sodiumuser
 
 # Render passes $PORT at runtime (defaults to 10000 on Render)
 ENV PORT=10000

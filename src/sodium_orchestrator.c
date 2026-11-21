@@ -749,6 +749,16 @@ static const char* const EMBEDDED_INDEX_HTML =
 "      return lower.startsWith('__tseitin') || lower.startsWith('autovar_') || lower.includes('tseitin');\n"
 "    }\n"
 "\n"
+"    function escapeHtml(str) {\n"
+"      if (str === null || str === undefined) return '';\n"
+"      return String(str)\n"
+"        .replace(/&/g, '&amp;')\n"
+"        .replace(/</g, '&lt;')\n"
+"        .replace(/>/g, '&gt;')\n"
+"        .replace(/\"/g, '&quot;')\n"
+"        .replace(/'/g, '&#39;');\n"
+"    }\n"
+"\n"
 "    function formatPhrase(raw) {\n"
 "      if (!raw) return '';\n"
 "      let s = raw.trim();\n"
@@ -764,11 +774,11 @@ static const char* const EMBEDDED_INDEX_HTML =
 "      const clean = phrase.trim();\n"
 "      let m = clean.match(/^(.+?)\\s+(?:is\\s+in|in|at)\\s+(.+)$/i);\n"
 "      if (m) {\n"
-"        return val ? '&#x2713; Place ' + m[1] + ' in ' + m[2] : '&#x2715; Exclude ' + m[1] + ' from ' + m[2];\n"
+"        return val ? '✓ Place ' + m[1] + ' in ' + m[2] : '✕ Exclude ' + m[1] + ' from ' + m[2];\n"
 "      }\n"
 "      m = clean.match(/^(.+?)\\s+(drinks?|operates?|keeps?|owns?|smokes?|eats?|runs?|requires?)\\s+(.+)$/i);\n"
 "      if (m) {\n"
-"        return val ? ('&#x2713; ' + clean) : ('&#x2715; Prohibit: ' + clean);\n"
+"        return val ? ('✓ ' + clean) : ('✕ Prohibit: ' + clean);\n"
 "      }\n"
 "      m = clean.match(/^(.+?)\\s+(?:is|are|was|were)\\s+(.+)$/i);\n"
 "      if (m) {\n"
@@ -776,17 +786,17 @@ static const char* const EMBEDDED_INDEX_HTML =
 "        const pred = m[2];\n"
 "        if (val) {\n"
 "          if (/^(online|offline|active|inactive|ready|locked|unlocked|verified|open|closed|established)$/i.test(pred)) {\n"
-"            return '&#x2713; Set ' + subj + ' to ' + pred.toUpperCase();\n"
+"            return '✓ Set ' + subj + ' to ' + pred.toUpperCase();\n"
 "          }\n"
-"          return '&#x2713; Ensure ' + subj + ' is ' + pred;\n"
+"          return '✓ Ensure ' + subj + ' is ' + pred;\n"
 "        } else {\n"
 "          if (/^(online|offline|active|inactive|ready|locked|unlocked|verified|open|closed|established)$/i.test(pred)) {\n"
-"            return '&#x2715; Keep ' + subj + ' NOT ' + pred.toUpperCase();\n"
+"            return '✕ Keep ' + subj + ' NOT ' + pred.toUpperCase();\n"
 "          }\n"
-"          return '&#x2715; Ensure ' + subj + ' is NOT ' + pred;\n"
+"          return '✕ Ensure ' + subj + ' is NOT ' + pred;\n"
 "        }\n"
 "      }\n"
-"      return val ? ('&#x2713; Enforce: ' + clean) : ('&#x2715; Prevent: ' + clean);\n"
+"      return val ? ('✓ Enforce: ' + clean) : ('✕ Prevent: ' + clean);\n"
 "    }\n"
 "\n"
 "    function toggleTseitinVars() {\n"
@@ -810,7 +820,7 @@ static const char* const EMBEDDED_INDEX_HTML =
 "\n"
 "      if (data.error) {\n"
 "        document.getElementById('m-code').innerText = 'ERROR';\n"
-"        document.getElementById('results-body').innerHTML = `<tr><td colspan=\"3\" style=\"text-align:center;padding:24px;color:#c81e1e;font-family:monospace;\"><strong>Error:</strong> ${data.error} ${data.details ? '<br/><small>' + data.details + '</small>' : ''}</td></tr>`;\n"
+"        document.getElementById('results-body').innerHTML = `<tr><td colspan=\"3\" style=\"text-align:center;padding:24px;color:#c81e1e;font-family:monospace;\"><strong>Error:</strong> ${escapeHtml(data.error)} ${data.details ? '<br/><small>' + escapeHtml(data.details) + '</small>' : ''}</td></tr>`;\n"
 "        if (planPanel) planPanel.style.display = 'none';\n"
 "        if (toggleBtn) toggleBtn.style.display = 'none';\n"
 "        return;\n"
@@ -823,7 +833,6 @@ static const char* const EMBEDDED_INDEX_HTML =
 "      document.getElementById('m-code').innerText = status === 'SATISFIABLE' ? 'SAT' : (status === 'UNSATISFIABLE' ? 'UNSAT' : (resp.status_code || 0));\n"
 "      const tbody = document.getElementById('results-body');\n"
 "      tbody.innerHTML = '';\n"
-"\n"
 "      if (status === 'UNSATISFIABLE') {\n"
 "        if (planPanel) {\n"
 "          planPanel.style.display = 'block';\n"
@@ -864,12 +873,14 @@ static const char* const EMBEDDED_INDEX_HTML =
 "        const phrase = formatPhrase(rawName);\n"
 "        const directive = getOperationalDirective(phrase, val);\n"
 "        const pill = val ? '<span class=\"pill-true\">TRUE</span>' : '<span class=\"pill-false\">FALSE</span>';\n"
+"        const escPhrase = escapeHtml(phrase);\n"
+"        const escDirective = escapeHtml(directive);\n"
 "\n"
 "        if (isTseitin) {\n"
 "          tseitinCount++;\n"
 "          tbody.innerHTML += `\n"
 "            <tr class=\"tseitin-row\" style=\"display:none; opacity:0.75;\">\n"
-"              <td><span style=\"font-family:monospace; color:var(--text-muted); font-size:12px;\">${phrase}</span></td>\n"
+"              <td><span style=\"font-family:monospace; color:var(--text-muted); font-size:12px;\">${escPhrase}</span></td>\n"
 "              <td>${pill}</td>\n"
 "              <td><span style=\"font-size:11px; font-family:monospace; color:var(--text-muted);\">Proof Auxiliary Gate</span></td>\n"
 "            </tr>\n"
@@ -877,15 +888,15 @@ static const char* const EMBEDDED_INDEX_HTML =
 "        } else {\n"
 "          tbody.innerHTML += `\n"
 "            <tr>\n"
-"              <td><strong style=\"font-family:monospace; font-size:13px;\">${phrase}</strong></td>\n"
+"              <td><strong style=\"font-family:monospace; font-size:13px;\">${escPhrase}</strong></td>\n"
 "              <td>${pill}</td>\n"
-"              <td><span style=\"font-family:monospace; font-size:11px;\">${directive}</span></td>\n"
+"              <td><span style=\"font-family:monospace; font-size:11px;\">${escDirective}</span></td>\n"
 "            </tr>\n"
 "          `;\n"
 "          if (val) {\n"
-"            activePlanHtml += `<div class=\"plan-item active\"><span style=\"color:var(--sat-green);font-weight:bold;\">&#x2713;</span> <strong>${phrase}</strong></div>`;\n"
+"            activePlanHtml += `<div class=\"plan-item active\"><span style=\"color:var(--sat-green);font-weight:bold;\">&#x2713;</span> <strong>${escPhrase}</strong></div>`;\n"
 "          } else {\n"
-"            inactivePlanHtml += `<div class=\"plan-item inactive\"><span style=\"color:var(--unsat-red);font-weight:bold;\">&#x2715;</span> <span>${phrase}</span></div>`;\n"
+"            inactivePlanHtml += `<div class=\"plan-item inactive\"><span style=\"color:var(--unsat-red);font-weight:bold;\">&#x2715;</span> <span>${escPhrase}</span></div>`;\n"
 "          }\n"
 "        }\n"
 "      }\n"
@@ -923,6 +934,12 @@ static const char* const EMBEDDED_INDEX_HTML =
 // SECTION 3: HTTP SERVER ENGINE & REST API HANDLERS
 // ============================================================================
 
+#define MAX_CONCURRENT_CLIENTS 32
+static volatile int g_active_clients = 0;
+
+#define MAX_CONCURRENT_NLP 2
+static volatile int g_active_nlp_workers = 0;
+
 typedef struct {
     int client_fd;
     char client_ip[64];
@@ -936,6 +953,11 @@ static void send_http_response(
     const char* body,
     size_t body_len
 ) {
+    const char* allowed_origin = getenv("SODIUM_ALLOWED_ORIGIN");
+    if (!allowed_origin || strlen(allowed_origin) == 0) {
+        allowed_origin = "*";
+    }
+
     char header_buf[1024];
     int header_len = snprintf(
         header_buf, sizeof(header_buf),
@@ -943,12 +965,14 @@ static void send_http_response(
         "Server: Sodium-Automated-Reasoning/1.0\r\n"
         "Content-Type: %s\r\n"
         "Content-Length: %zu\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Origin: %s\r\n"
         "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "X-Frame-Options: SAMEORIGIN\r\n"
         "Connection: close\r\n"
         "\r\n",
-        status_code, status_text, content_type, body_len
+        status_code, status_text, content_type, body_len, allowed_origin
     );
 
 #if defined(_WIN32)
@@ -1066,6 +1090,7 @@ static void* handle_client_connection(void* arg) {
         close(client_fd);
 #endif
         free(ctx);
+        __sync_fetch_and_sub(&g_active_clients, 1);
         return NULL;
     }
 
@@ -1073,6 +1098,19 @@ static void* handle_client_connection(void* arg) {
     const char* cl_pos = find_case_insensitive(buffer, "Content-Length:");
     if (cl_pos) {
         content_length = (size_t)strtoul(cl_pos + 15, NULL, 10);
+    }
+
+    if (content_length > 2 * 1024 * 1024) { // Max 2MB payload
+        const char* err = "{\"error\":\"Payload Too Large (Max 2MB)\"}\n";
+        send_http_response(client_fd, 413, "Payload Too Large", "application/json", err, strlen(err));
+#if defined(_WIN32)
+        closesocket(client_fd);
+#else
+        close(client_fd);
+#endif
+        free(ctx);
+        __sync_fetch_and_sub(&g_active_clients, 1);
+        return NULL;
     }
 
     // Phase 3: Read remaining body bytes if needed
@@ -1100,6 +1138,36 @@ static void* handle_client_connection(void* arg) {
 
     LOG_INFO("HTTP", "Request: %s %s from client %s (FD: %d, Total: %d bytes, Body: %zu bytes)",
              method, path, ctx->client_ip, client_fd, total_bytes, body_received);
+
+    // Enforce optional API key if SODIUM_API_KEY environment variable is configured
+    const char* configured_api_key = getenv("SODIUM_API_KEY");
+    if (configured_api_key && strlen(configured_api_key) > 0) {
+        if (strncmp(path, "/api/", 5) == 0 && strcmp(method, "OPTIONS") != 0) {
+            char expected_token[256];
+            snprintf(expected_token, sizeof(expected_token), "Bearer %s", configured_api_key);
+            const char* auth_pos = find_case_insensitive(buffer, "Authorization:");
+            bool authorized = false;
+            if (auth_pos) {
+                auth_pos += 14;
+                while (*auth_pos == ' ') auth_pos++;
+                if (strncmp(auth_pos, expected_token, strlen(expected_token)) == 0) {
+                    authorized = true;
+                }
+            }
+            if (!authorized) {
+                const char* err = "{\"error\":\"Unauthorized: Valid Bearer token required\"}\n";
+                send_http_response(client_fd, 401, "Unauthorized", "application/json", err, strlen(err));
+#if defined(_WIN32)
+                closesocket(client_fd);
+#else
+                close(client_fd);
+#endif
+                free(ctx);
+                __sync_fetch_and_sub(&g_active_clients, 1);
+                return NULL;
+            }
+        }
+    }
 
     // 1. CORS Preflight
     if (strcmp(method, "OPTIONS") == 0) {
@@ -1180,6 +1248,14 @@ static void* handle_client_connection(void* arg) {
             send_http_response(client_fd, 400, "Bad Request", "application/json", err, strlen(err));
             if (body) free(body);
         } else {
+        if (g_active_nlp_workers >= MAX_CONCURRENT_NLP) {
+            LOG_WARN("NLP", "POST /api/v1/nlp-solve worker pool saturated (%d active)", g_active_nlp_workers);
+            const char* err = "{\"error\":\"NLP reasoning engine busy. Please retry shortly.\"}\n";
+            send_http_response(client_fd, 429, "Too Many Requests", "application/json", err, strlen(err));
+            free(body);
+        } else {
+            __sync_fetch_and_add(&g_active_nlp_workers, 1);
+
             // Extract "prompt" field if body is JSON
             char extracted_prompt[32768] = {0};
             extract_json_field_string(body, "prompt", extracted_prompt, sizeof(extracted_prompt));
@@ -1195,22 +1271,29 @@ static void* handle_client_connection(void* arg) {
             // Safe temporary file to avoid shell argument escaping limits and issues
             char tmp_path[] = "/tmp/sodium_prompt_XXXXXX";
             int tmp_fd = mkstemp(tmp_path);
+
+            char tmp_err_path[] = "/tmp/sodium_err_XXXXXX";
+            int tmp_err_fd = mkstemp(tmp_err_path);
+            if (tmp_err_fd >= 0) close(tmp_err_fd);
+
             if (tmp_fd < 0) {
                 LOG_ERROR("NLP", "Failed to create temporary file for NLP prompt");
                 const char* err = "{\"error\":\"Failed to create temporary prompt file\"}\n";
                 send_http_response(client_fd, 500, "Internal Server Error", "application/json", err, strlen(err));
+                unlink(tmp_err_path);
             } else {
                 write(tmp_fd, extracted_prompt, strlen(extracted_prompt));
                 close(tmp_fd);
 
                 char cmd[1024];
-                snprintf(cmd, sizeof(cmd), "%s -m src.NLP.NLPAlgo.classical_pipeline --file \"%s\" 2>/tmp/sodium_nlp_err.log",
-                         py_bin, tmp_path);
+                snprintf(cmd, sizeof(cmd), "%s -m src.NLP.NLPAlgo.classical_pipeline --file \"%s\" 2>\"%s\"",
+                         py_bin, tmp_path, tmp_err_path);
 
                 FILE* fp = popen(cmd, "r");
                 if (!fp) {
                     LOG_ERROR("NLP", "Failed to execute Python subprocess: %s", cmd);
                     unlink(tmp_path);
+                    unlink(tmp_err_path);
                     const char* err = "{\"error\":\"Failed to invoke Classical NLP pipeline\"}\n";
                     send_http_response(client_fd, 500, "Internal Server Error", "application/json", err, strlen(err));
                 } else {
@@ -1222,6 +1305,7 @@ static void* handle_client_connection(void* arg) {
 
                     if (nread > 0) {
                         LOG_INFO("NLP", "Classical NLP pipeline returned %zu bytes (Exit: %d)", nread, pcode);
+                        unlink(tmp_err_path);
                         char* out_json = NULL;
                         sodium_api_solve_json(nlp_json, &out_json);
                         if (out_json) {
@@ -1232,13 +1316,14 @@ static void* handle_client_connection(void* arg) {
                         }
                     } else {
                         LOG_WARN("NLP", "Classical NLP pipeline returned 0 bytes (Exit: %d)", pcode);
-                        FILE* err_fp = fopen("/tmp/sodium_nlp_err.log", "r");
+                        FILE* err_fp = fopen(tmp_err_path, "r");
                         char err_buf[512] = {0};
                         if (err_fp) {
                             size_t er = fread(err_buf, 1, sizeof(err_buf) - 1, err_fp);
                             err_buf[er] = '\0';
                             fclose(err_fp);
                         }
+                        unlink(tmp_err_path);
                         char err_resp[1024];
                         snprintf(err_resp, sizeof(err_resp),
                                  "{\"error\":\"Classical NLP pipeline returned no output\",\"details\":\"%.200s\"}\n",
@@ -1247,7 +1332,9 @@ static void* handle_client_connection(void* arg) {
                     }
                 }
             }
+            __sync_fetch_and_sub(&g_active_nlp_workers, 1);
             free(body);
+        }
         }
     }
     // 7. Ignore Browser Icon Prefetches
@@ -1267,6 +1354,7 @@ static void* handle_client_connection(void* arg) {
     close(client_fd);
 #endif
     free(ctx);
+    __sync_fetch_and_sub(&g_active_clients, 1);
     return NULL;
 }
 
@@ -1344,6 +1432,33 @@ static void run_server_daemon(const char* host, int port) {
             continue;
         }
 
+#if defined(_WIN32)
+        DWORD timeout_ms = 10000;
+        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout_ms, sizeof(timeout_ms));
+        setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout_ms, sizeof(timeout_ms));
+#else
+        struct timeval tv;
+        tv.tv_sec = 10;
+        tv.tv_usec = 0;
+        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (const void*)&tv, sizeof(tv));
+        setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, (const void*)&tv, sizeof(tv));
+#endif
+
+        if (g_active_clients >= MAX_CONCURRENT_CLIENTS) {
+            LOG_WARN("SERVER", "Connection pool exhausted (%d active), rejecting client FD: %d", g_active_clients, client_fd);
+            const char* busy_resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 30\r\nConnection: close\r\n\r\n{\"error\":\"Server too busy\"}\n";
+#if defined(_WIN32)
+            send(client_fd, busy_resp, (int)strlen(busy_resp), 0);
+            closesocket(client_fd);
+#else
+            write(client_fd, busy_resp, strlen(busy_resp));
+            close(client_fd);
+#endif
+            continue;
+        }
+
+        __sync_fetch_and_add(&g_active_clients, 1);
+
         HttpClientContext* ctx = (HttpClientContext*)malloc(sizeof(HttpClientContext));
         ctx->client_fd = client_fd;
         inet_ntop(AF_INET, &client_addr.sin_addr, ctx->client_ip, sizeof(ctx->client_ip));
@@ -1381,12 +1496,16 @@ static char* read_entire_file(const char* filepath) {
     long sz = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    if (sz < 0) {
+    if (sz < 0 || sz > 50 * 1024 * 1024) { // 50MB safety cap
         fclose(fp);
         return NULL;
     }
 
     char* buf = (char*)malloc((size_t)sz + 1);
+    if (!buf) {
+        fclose(fp);
+        return NULL;
+    }
     size_t nr = fread(buf, 1, (size_t)sz, fp);
     buf[nr] = '\0';
     fclose(fp);

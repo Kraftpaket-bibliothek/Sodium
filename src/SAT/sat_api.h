@@ -3,17 +3,35 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <signal.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* ========================================================================= */
-/* CaDiCaL-Referenced Status Codes                                           */
+/* Safety Bounds & Constraints                                               */
+/* ========================================================================= */
+#ifndef SODIUM_MAX_VARIABLES
+#define SODIUM_MAX_VARIABLES        10000000   /* 10 Million variables max */
+#endif
+#ifndef SODIUM_MAX_CLAUSES
+#define SODIUM_MAX_CLAUSES          10000000   /* 10 Million clauses max */
+#endif
+#ifndef SODIUM_MAX_CLAUSE_SIZE
+#define SODIUM_MAX_CLAUSE_SIZE      100000     /* 100k Literals per clause max */
+#endif
+
+/* ========================================================================= */
+/* CaDiCaL-Referenced & Extended Status Codes                                */
 /* ========================================================================= */
 #define SODIUM_STATUS_UNKNOWN        0
 #define SODIUM_STATUS_SATISFIABLE   10
 #define SODIUM_STATUS_UNSATISFIABLE 20
+#define SODIUM_STATUS_TIMEOUT       30
+#define SODIUM_STATUS_INTERRUPTED   40
+#define SODIUM_STATUS_RESOURCE_LIMIT 50
+#define SODIUM_STATUS_ERROR         50
 
 /* ========================================================================= */
 /* 1. Mode 1: SAT Logic JSON Pipeline API                                    */
@@ -80,6 +98,32 @@ void          sodium_solver_add_assumption(SodiumSolver* solver, int lit);
  * @brief Clears all current assumptions without modifying the base clause database.
  */
 void          sodium_solver_clear_assumptions(SodiumSolver* solver);
+
+/**
+ * @brief Sets execution timeout limit in seconds for subsequent solve calls.
+ *
+ * @param solver          Solver instance.
+ * @param timeout_seconds Timeout in seconds (0 = unlimited).
+ */
+void          sodium_solver_set_timeout(SodiumSolver* solver, double timeout_seconds);
+
+/**
+ * @brief Attaches a custom interruption flag to the solver.
+ *
+ * @param solver Solver instance.
+ * @param flag   Pointer to atomic interruption flag (or NULL for default).
+ */
+void          sodium_solver_set_interrupt_flag(SodiumSolver* solver, volatile sig_atomic_t* flag);
+
+/**
+ * @brief Signals interruption to any running CDCL solver operation globally.
+ */
+void          sodium_api_interrupt(void);
+
+/**
+ * @brief Resets solver telemetry and global interruption flag.
+ */
+void          sodium_api_reset(void);
 
 /**
  * @brief Executes the CDCL search loop under current base clauses and assumptions.
