@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.o
+*.dylib
+*.so
+*.log
+sodium.log
+build/
+dist/
+*.dSYM/
+third_party/
+sodium

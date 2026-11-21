@@ -105,9 +105,9 @@ server: $(SOLVER_LIB)
 	@echo "========================================================"
 	@echo " Building Sodium (Headless CLI + Web Server)..."
 	@echo "========================================================"
-	clang -std=c11 -O2 -Wall -Wextra -pthread \
+	$(CC) -std=c11 -O2 -Wall -Wextra -pthread \
 		-Isrc -Isrc/SAT -Isrc/SAT/CDCL -Isrc/NLP \
-		$(CORE_SRCS) \
+		$(CORE_SRCS) -lm \
 		-o $(TARGET)
 	@echo ""
 	@echo "✓ Build complete → ./$(TARGET)"

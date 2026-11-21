@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sodium-reasoning-engine
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: check
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
