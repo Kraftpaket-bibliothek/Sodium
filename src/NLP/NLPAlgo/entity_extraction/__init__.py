@@ -4,6 +4,7 @@
 # ============================================================================
 
 from .pattern_extractor import EntityPatternExtractor
-from .distance_matcher import EntityDistanceMatcher
+from .distance_matcher import EntityDistanceMatcher, EntityResolver
+from .domain_matrix import DomainAxisDetector, DynamicDomainMatrix
 
-__all__ = ["EntityPatternExtractor", "EntityDistanceMatcher"]
+__all__ = ["EntityPatternExtractor", "EntityDistanceMatcher", "EntityResolver", "DomainAxisDetector", "DynamicDomainMatrix"]
