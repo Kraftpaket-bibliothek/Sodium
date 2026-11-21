@@ -21,14 +21,21 @@ dist/
 # macOS debug symbol bundles
 *.dSYM/
 
+# Logs
+*.log
+sodium.log
+
 # Compiled test executables
 src/SAT/tests/test_10m_clauses
 src/SAT/tests/test_analyze_conflict
 src/SAT/tests/test_backtrack
 src/SAT/tests/test_benchmarks
+src/SAT/tests/test_clause_array
 src/SAT/tests/test_database_refresh
+src/SAT/tests/test_electronic_board
 src/SAT/tests/test_enqueue_trail
 src/SAT/tests/test_memory_allocation
 src/SAT/tests/test_propagate
 src/SAT/tests/test_restart
 src/SAT/tests/test_solve_integration
+src/SAT/tests/test_zebra_puzzle
