@@ -3,6 +3,8 @@
 # Sodium
 <img width="1536" height="1024" alt="Modern Na Emblem with Indian Flag Accent" src="https://github.com/user-attachments/assets/fe782949-42c1-41b2-9953-8bccacfefab6" />
 
+<a href="https://www.producthunt.com/products/sodium?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-sodium" target="_blank" rel="noopener noreferrer"><img alt="Sodium - Neuro Symbolic Automated Reasoning Studio | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1325565&amp;theme=dark&amp;t=1795370341383"></a>
+
 ### Industrial-Grade Automated Reasoning & Neuro-Symbolic Verification Engine
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=for-the-badge)](LICENSE)
@@ -15,7 +17,7 @@
 [![Deterministic](https://img.shields.io/badge/Guarantees-100%25_Formal_Proof-purple.svg?style=for-the-badge)]()
 
 <br/>
-<a href="https://www.producthunt.com/products/sodium?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-sodium" target="_blank" rel="noopener noreferrer"><img alt="Sodium - Neuro Symbolic Automated Reasoning Studio | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1325565&amp;theme=dark&amp;t=1795370341383"></a>
+
 **Transform natural language requirements, complex contractual clauses, and mathematical objectives into provably satisfiable formal solutions.**
 
 [Executive Summary](#-the-executive-summary) •
