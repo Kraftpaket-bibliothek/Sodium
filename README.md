@@ -15,7 +15,7 @@
 [![Deterministic](https://img.shields.io/badge/Guarantees-100%25_Formal_Proof-purple.svg?style=for-the-badge)]()
 
 <br/>
-
+<a href="https://www.producthunt.com/products/sodium?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-sodium" target="_blank" rel="noopener noreferrer"><img alt="Sodium - Neuro Symbolic Automated Reasoning Studio | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1325565&amp;theme=dark&amp;t=1795370341383"></a>
 **Transform natural language requirements, complex contractual clauses, and mathematical objectives into provably satisfiable formal solutions.**
 
 [Executive Summary](#-the-executive-summary) •
